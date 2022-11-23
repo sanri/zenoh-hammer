@@ -1,14 +1,16 @@
-#include "mainwindow.h"
+#include "page_mainwindow/mainwindow.h"
 
 #include <QApplication>
 #include <QLocale>
 #include <QTranslator>
 #include <QStyleFactory>
+#include <QSet>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     QApplication::setStyle(QStyleFactory::create("Fusion"));
+//    QApplication::setStyle(QStyleFactory::create("macOS"));
 
     QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();

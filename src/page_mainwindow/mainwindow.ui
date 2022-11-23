@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="tabPosition">
+       <enum>QTabWidget::North</enum>
+      </property>
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="PageSession" name="tab_session">
+       <attribute name="title">
+        <string>会话</string>
+       </attribute>
+      </widget>
+      <widget class="PageSub" name="tab_sub">
+       <attribute name="title">
+        <string>订阅</string>
+       </attribute>
+      </widget>
+      <widget class="PageGet" name="tab_get">
+       <attribute name="title">
+        <string>获取</string>
+       </attribute>
+      </widget>
+      <widget class="PagePut" name="tab_put">
+       <attribute name="title">
+        <string>推送</string>
+       </attribute>
+      </widget>
+      <widget class="PagePub" name="tab_pub">
+       <attribute name="title">
+        <string>发布</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu_help">
+    <property name="title">
+     <string>帮助</string>
+    </property>
+    <widget class="QMenu" name="menu">
+     <property name="title">
+      <string>语言</string>
+     </property>
+     <addaction name="action_langulage_zh_cn"/>
+     <addaction name="action_langulage_en_us"/>
+    </widget>
+    <addaction name="action_about"/>
+    <addaction name="menu"/>
+   </widget>
+   <addaction name="menu_help"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_about">
+   <property name="text">
+    <string>关于</string>
+   </property>
+  </action>
+  <action name="action_langulage_zh_cn">
+   <property name="text">
+    <string>中文</string>
+   </property>
+  </action>
+  <action name="action_langulage_en_us">
+   <property name="text">
+    <string>英文</string>
+   </property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PageSession</class>
+   <extends>QWidget</extends>
+   <header>src/page_session/page_session.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>PageSub</class>
+   <extends>QWidget</extends>
+   <header>src/page_sub/page_sub.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>PageGet</class>
+   <extends>QWidget</extends>
+   <header>src/page_get/page_get.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>PagePub</class>
+   <extends>QWidget</extends>
+   <header>src/page_pub/page_pub.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>PagePut</class>
+   <extends>QWidget</extends>
+   <header>src/page_put/page_put.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

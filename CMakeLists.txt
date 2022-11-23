@@ -14,22 +14,40 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
 
-set(TS_FILES zenoh-hammer_zh_CN.ts)
+set(TS_FILES src/ts/zenoh-hammer_zh_CN.ts)
 
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
-        mainwindow.ui
         ${TS_FILES}
-)
+        src/main.cpp
+        src/page_mainwindow/mainwindow.cpp
+        src/page_mainwindow/mainwindow.h
+        src/page_mainwindow/mainwindow.ui
+        src/page_session/page_session.cpp
+        src/page_session/page_session.h
+        src/page_session/page_session.ui
+        src/page_sub/page_sub.cpp
+        src/page_sub/page_sub.h
+        src/page_sub/page_sub.ui
+        src/page_put/page_put.cpp
+        src/page_put/page_put.h
+        src/page_put/page_put.ui
+        src/page_pub/page_pub.cpp
+        src/page_pub/page_pub.h
+        src/page_pub/page_pub.ui
+        src/page_get/page_get.cpp
+        src/page_get/page_get.h
+        src/page_get/page_get.ui
+        )
 
 qt_add_executable(zenoh-hammer
-    MANUAL_FINALIZATION
-    ${PROJECT_SOURCES}
-)
+        MANUAL_FINALIZATION
+        ${PROJECT_SOURCES}
+        )
 
-qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
+qt_add_translations(zenoh-hammer TS_FILES
+        src/ts/zenoh-hammer_zh_CN.ts
+        src/ts/zenoh-hammer_en_US.ts
+        )
 
 target_link_libraries(zenoh-hammer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
