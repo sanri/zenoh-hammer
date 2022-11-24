@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>PageSub</string>
+   <string notr="true"/>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_3">
    <property name="spacing">
@@ -30,22 +30,22 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QSplitter" name="splitter_3">
+    <widget class="QSplitter" name="splitter_top">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
-     <widget class="QWidget" name="">
+     <widget class="QWidget" name="layoutWidget">
       <layout class="QVBoxLayout" name="verticalLayout">
        <item>
         <widget class="QListWidget" name="listWidget">
          <item>
           <property name="text">
-           <string>sub1</string>
+           <string notr="true">sub1</string>
           </property>
          </item>
          <item>
           <property name="text">
-           <string>sub2</string>
+           <string notr="true">sub2</string>
           </property>
          </item>
         </widget>
@@ -113,7 +113,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="">
+     <widget class="QWidget" name="layoutWidget">
       <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1">
        <property name="spacing">
         <number>0</number>
@@ -143,7 +143,7 @@
             </font>
            </property>
            <property name="text">
-            <string>demo/example/test1</string>
+            <string notr="true">demo/example/test1</string>
            </property>
           </widget>
          </item>
@@ -173,7 +173,7 @@
            <enum>Qt::Vertical</enum>
           </property>
           <widget class="QWidget" name="widget" native="true">
-           <widget class="QWidget" name="">
+           <widget class="QWidget" name="layoutWidget">
             <property name="geometry">
              <rect>
               <x>20</x>

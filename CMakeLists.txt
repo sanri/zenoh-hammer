@@ -37,6 +37,8 @@ set(PROJECT_SOURCES
         src/page_get/page_get.cpp
         src/page_get/page_get.h
         src/page_get/page_get.ui
+        src/qzenoh/qzenoh.cpp
+        src/qzenoh/qzenoh.h
         )
 
 qt_add_executable(zenoh-hammer
@@ -49,7 +51,24 @@ qt_add_translations(zenoh-hammer TS_FILES
         src/ts/zenoh-hammer_en_US.ts
         )
 
-target_link_libraries(zenoh-hammer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+if(NOT DEFINED ENV{ZENOHC_PATH})
+    message(FATAL_ERROR "not defined environment ZENOHC_PATH")
+endif()
+
+set(ZENOHC_INCLUDE_PATH $ENV{ZENOHC_PATH}/include)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(ZENOHC_LIB_PATH $ENV{ZENOHC_PATH}/target/debug)
+else()
+    set(ZENOHC_LIB_PATH $ENV{ZENOHC_PATH}/target/release)
+endif()
+
+target_include_directories(zenoh-hammer PUBLIC ${ZENOHC_INCLUDE_PATH})
+target_link_directories(zenoh-hammer PUBLIC ${ZENOHC_LIB_PATH})
+
+target_link_libraries(zenoh-hammer PRIVATE
+        Qt${QT_VERSION_MAJOR}::Widgets
+        zenohc
+        )
 
 set_target_properties(zenoh-hammer PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

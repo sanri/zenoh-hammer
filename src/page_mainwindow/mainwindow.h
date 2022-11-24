@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QThread>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -16,4 +17,5 @@ public:
 
 private:
     Ui::MainWindow *ui;
+    QThread workerThread;
 };

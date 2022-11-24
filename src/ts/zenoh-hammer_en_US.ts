@@ -12,10 +12,14 @@
     <message>
         <location filename="../page_mainwindow/mainwindow.ui" line="43"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="43"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="43"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="43"/>
         <source>会话</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="48"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="48"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="48"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="48"/>
         <source>订阅</source>
@@ -24,10 +28,14 @@
     <message>
         <location filename="../page_mainwindow/mainwindow.ui" line="53"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="53"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="53"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="53"/>
         <source>获取</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="58"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="58"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="58"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="58"/>
         <source>推送</source>
@@ -36,10 +44,14 @@
     <message>
         <location filename="../page_mainwindow/mainwindow.ui" line="63"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="63"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="63"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="63"/>
         <source>发布</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="81"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="81"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="81"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="81"/>
         <source>帮助</source>
@@ -48,7 +60,27 @@
     <message>
         <location filename="../page_mainwindow/mainwindow.ui" line="90"/>
         <location filename="../page_mainwindow/mainwindow.ui" line="90"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="98"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="98"/>
         <source>关于</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="85"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="85"/>
+        <source>语言</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="103"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="103"/>
+        <source>中文</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../page_mainwindow/mainwindow.ui" line="108"/>
+        <location filename="../page_mainwindow/mainwindow.ui" line="108"/>
+        <source>英文</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -57,10 +89,14 @@
     <message>
         <location filename="../page_get/page_get.ui" line="14"/>
         <location filename="../page_get/page_get.ui" line="14"/>
+        <location filename="../page_get/page_get.ui" line="14"/>
+        <location filename="../page_get/page_get.ui" line="14"/>
         <source>PageGet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_get/page_get.ui" line="26"/>
+        <location filename="../page_get/page_get.ui" line="26"/>
         <location filename="../page_get/page_get.ui" line="26"/>
         <location filename="../page_get/page_get.ui" line="26"/>
         <source>page_get</source>
@@ -72,10 +108,14 @@
     <message>
         <location filename="../page_pub/page_pub.ui" line="14"/>
         <location filename="../page_pub/page_pub.ui" line="14"/>
+        <location filename="../page_pub/page_pub.ui" line="14"/>
+        <location filename="../page_pub/page_pub.ui" line="14"/>
         <source>PagePub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_pub/page_pub.ui" line="26"/>
+        <location filename="../page_pub/page_pub.ui" line="26"/>
         <location filename="../page_pub/page_pub.ui" line="26"/>
         <location filename="../page_pub/page_pub.ui" line="26"/>
         <source>page_pub</source>
@@ -87,6 +127,7 @@
     <message>
         <location filename="../page_put/page_put.ui" line="14"/>
         <location filename="../page_put/page_put.ui" line="14"/>
+        <location filename="../page_put/page_put.ui" line="14"/>
         <source>PagePut</source>
         <translation type="unfinished"></translation>
     </message>
@@ -96,10 +137,17 @@
         <source>page_put</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <location filename="../page_put/page_put.ui" line="129"/>
+        <source>推送</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PageSession</name>
     <message>
+        <location filename="../page_session/page_session.ui" line="90"/>
+        <location filename="../page_session/page_session.ui" line="90"/>
         <location filename="../page_session/page_session.ui" line="90"/>
         <location filename="../page_session/page_session.ui" line="90"/>
         <source>连接</source>
@@ -122,10 +170,18 @@
         <location filename="../page_session/page_session.ui" line="329"/>
         <location filename="../page_session/page_session.ui" line="210"/>
         <location filename="../page_session/page_session.ui" line="329"/>
+        <location filename="../page_session/page_session.ui" line="210"/>
+        <location filename="../page_session/page_session.ui" line="329"/>
+        <location filename="../page_session/page_session.ui" line="210"/>
+        <location filename="../page_session/page_session.ui" line="329"/>
         <source>+</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_session/page_session.ui" line="223"/>
+        <location filename="../page_session/page_session.ui" line="342"/>
+        <location filename="../page_session/page_session.ui" line="223"/>
+        <location filename="../page_session/page_session.ui" line="342"/>
         <location filename="../page_session/page_session.ui" line="223"/>
         <location filename="../page_session/page_session.ui" line="342"/>
         <location filename="../page_session/page_session.ui" line="223"/>
@@ -138,10 +194,34 @@
         <location filename="../page_session/page_session.ui" line="352"/>
         <location filename="../page_session/page_session.ui" line="233"/>
         <location filename="../page_session/page_session.ui" line="352"/>
+        <location filename="../page_session/page_session.ui" line="233"/>
+        <location filename="../page_session/page_session.ui" line="352"/>
+        <location filename="../page_session/page_session.ui" line="233"/>
+        <location filename="../page_session/page_session.ui" line="352"/>
         <source>tcp/127.0.0.1:7447</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_session/page_session.ui" line="241"/>
+        <location filename="../page_session/page_session.ui" line="246"/>
+        <location filename="../page_session/page_session.ui" line="251"/>
+        <location filename="../page_session/page_session.ui" line="256"/>
+        <location filename="../page_session/page_session.ui" line="261"/>
+        <location filename="../page_session/page_session.ui" line="360"/>
+        <location filename="../page_session/page_session.ui" line="365"/>
+        <location filename="../page_session/page_session.ui" line="370"/>
+        <location filename="../page_session/page_session.ui" line="375"/>
+        <location filename="../page_session/page_session.ui" line="380"/>
+        <location filename="../page_session/page_session.ui" line="241"/>
+        <location filename="../page_session/page_session.ui" line="246"/>
+        <location filename="../page_session/page_session.ui" line="251"/>
+        <location filename="../page_session/page_session.ui" line="256"/>
+        <location filename="../page_session/page_session.ui" line="261"/>
+        <location filename="../page_session/page_session.ui" line="360"/>
+        <location filename="../page_session/page_session.ui" line="365"/>
+        <location filename="../page_session/page_session.ui" line="370"/>
+        <location filename="../page_session/page_session.ui" line="375"/>
+        <location filename="../page_session/page_session.ui" line="380"/>
         <location filename="../page_session/page_session.ui" line="241"/>
         <location filename="../page_session/page_session.ui" line="246"/>
         <location filename="../page_session/page_session.ui" line="251"/>
@@ -172,6 +252,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../page_session/page_session.ui" line="399"/>
+        <location filename="../page_session/page_session.ui" line="399"/>
         <location filename="../page_session/page_session.ui" line="399"/>
         <location filename="../page_session/page_session.ui" line="399"/>
         <source>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
@@ -219,6 +301,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <message>
         <location filename="../page_sub/page_sub.ui" line="14"/>
         <location filename="../page_sub/page_sub.ui" line="14"/>
+        <location filename="../page_sub/page_sub.ui" line="14"/>
         <source>PageSub</source>
         <translation type="unfinished"></translation>
     </message>
@@ -226,6 +309,18 @@ li.checked::marker { content: &quot;\2612&quot;; }
         <location filename="../page_sub/page_sub.ui" line="26"/>
         <location filename="../page_sub/page_sub.ui" line="26"/>
         <source>page_sub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../page_sub/page_sub.ui" line="159"/>
+        <location filename="../page_sub/page_sub.ui" line="159"/>
+        <source>清理</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../page_sub/page_sub.ui" line="189"/>
+        <location filename="../page_sub/page_sub.ui" line="189"/>
+        <source>缓存大小</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
