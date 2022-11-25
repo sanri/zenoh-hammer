@@ -8,12 +8,13 @@
 #include "ui_page_sub.h"
 
 
-PageSub::PageSub(QWidget *parent) :
+PageSub::PageSub(QWidget *parent)
+    :
     QWidget(parent), ui(new Ui::PageSub)
 {
     ui->setupUi(this);
-    ui->splitter_top->setStretchFactor(0,1);
-    ui->splitter_top->setStretchFactor(1,4);
+    ui->splitter_top->setStretchFactor(0, 1);
+    ui->splitter_top->setStretchFactor(1, 4);
 }
 
 PageSub::~PageSub()

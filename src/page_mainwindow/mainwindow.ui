@@ -32,6 +32,9 @@
     </property>
     <item>
      <widget class="QTabWidget" name="tabWidget">
+      <property name="enabled">
+       <bool>true</bool>
+      </property>
       <property name="tabPosition">
        <enum>QTabWidget::North</enum>
       </property>
@@ -44,21 +47,33 @@
        </attribute>
       </widget>
       <widget class="PageSub" name="tab_sub">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <attribute name="title">
         <string>订阅</string>
        </attribute>
       </widget>
       <widget class="PageGet" name="tab_get">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <attribute name="title">
         <string>获取</string>
        </attribute>
       </widget>
       <widget class="PagePut" name="tab_put">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <attribute name="title">
         <string>推送</string>
        </attribute>
       </widget>
       <widget class="PagePub" name="tab_pub">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <attribute name="title">
         <string>发布</string>
        </attribute>

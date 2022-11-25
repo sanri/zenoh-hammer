@@ -11,8 +11,8 @@ PageSession::PageSession(QWidget *parent)
     ui->setupUi(this);
     ui->splitter_top->setStretchFactor(0, 2);
     ui->splitter_top->setStretchFactor(1, 3);
-    ui->splitter_level1->setStretchFactor(0,1);
-    ui->splitter_level1->setStretchFactor(1,2);
+    ui->splitter_level1->setStretchFactor(0, 1);
+    ui->splitter_level1->setStretchFactor(1, 2);
 
     connect_signals_slots();
 
@@ -32,7 +32,7 @@ void PageSession::showConfig(ZConfig &zConfig)
     ui->jsonTextBrowser->setMarkdown(j);
 }
 
-QListWidgetItem* create_endpoint()
+QListWidgetItem *create_endpoint()
 {
     auto item = new QListWidgetItem();
     item->setText("tcp/127.0.0.1:7447");
@@ -74,12 +74,12 @@ void PageSession::listenDel_clicked(bool checked)
 
 void PageSession::connect_signals_slots()
 {
-    connect(ui->update,&QPushButton::clicked,this,&PageSession::update_clicked);
-    connect(ui->connectAdd,&QPushButton::clicked,this,&PageSession::connectAdd_clicked);
-    connect(ui->connectDel,&QPushButton::clicked,this,&PageSession::connectDel_clicked);
-    connect(ui->listenAdd,&QPushButton::clicked,this,&PageSession::listenAdd_clicked);
-    connect(ui->listenDel,&QPushButton::clicked,this,&PageSession::listenDel_clicked);
-    connect(ui->sessionPushButton,&QPushButton::clicked,this,&PageSession::sessionPushButton_clicked);
+    connect(ui->update, &QPushButton::clicked, this, &PageSession::update_clicked);
+    connect(ui->connectAdd, &QPushButton::clicked, this, &PageSession::connectAdd_clicked);
+    connect(ui->connectDel, &QPushButton::clicked, this, &PageSession::connectDel_clicked);
+    connect(ui->listenAdd, &QPushButton::clicked, this, &PageSession::listenAdd_clicked);
+    connect(ui->listenDel, &QPushButton::clicked, this, &PageSession::listenDel_clicked);
+    connect(ui->sessionPushButton, &QPushButton::clicked, this, &PageSession::sessionPushButton_clicked);
 }
 
 bool PageSession::setConnects(ZConfig &zConfig)
@@ -116,7 +116,6 @@ bool PageSession::setMode(ZConfig &zConfig)
     return zConfig.setMode(mode);
 }
 
-
 void PageSession::update_clicked(bool checked)
 {
     ZConfig config = ZConfig();
@@ -145,7 +144,7 @@ bool PageSession::checkAndSetConfig(ZConfig &zConfig)
         return false;
     }
 
-    if(!setMode(zConfig)){
+    if (!setMode(zConfig)) {
         msgBox.setText(tr("mode 参数错误"));
         msgBox.exec();
         return false;
@@ -153,7 +152,7 @@ bool PageSession::checkAndSetConfig(ZConfig &zConfig)
     return true;
 }
 
-ZConfig* PageSession::getZConfig()
+ZConfig *PageSession::getZConfig()
 {
     auto *config = new ZConfig();
     if (checkAndSetConfig(*config)) {
@@ -188,6 +187,11 @@ void PageSession::sessionPushButton_clicked(bool check)
     else {
         ui->sessionPushButton->setChecked(false);
     }
+}
+
+void PageSession::setSessionPushButtonChecked(bool b)
+{
+    ui->sessionPushButton->setChecked(b);
 }
 
 

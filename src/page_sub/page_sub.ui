@@ -36,19 +36,11 @@
      </property>
      <widget class="QWidget" name="layoutWidget">
       <layout class="QVBoxLayout" name="verticalLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
        <item>
-        <widget class="QListWidget" name="listWidget">
-         <item>
-          <property name="text">
-           <string notr="true">sub1</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string notr="true">sub2</string>
-          </property>
-         </item>
-        </widget>
+        <widget class="QListWidget" name="subListWidget"/>
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
@@ -62,7 +54,7 @@
           <number>5</number>
          </property>
          <item>
-          <widget class="QPushButton" name="pushButton">
+          <widget class="QPushButton" name="subAdd">
            <property name="minimumSize">
             <size>
              <width>40</width>
@@ -86,7 +78,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_2">
+          <widget class="QPushButton" name="subDel">
            <property name="minimumSize">
             <size>
              <width>40</width>
@@ -148,7 +140,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_clear">
+          <widget class="QPushButton" name="clear">
            <property name="maximumSize">
             <size>
              <width>60</width>
@@ -167,7 +159,7 @@
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
-         <widget class="QTreeView" name="treeView"/>
+         <widget class="QTreeView" name="keyTreeView"/>
          <widget class="QSplitter" name="splitter">
           <property name="orientation">
            <enum>Qt::Vertical</enum>
@@ -184,14 +176,14 @@
             </property>
             <layout class="QHBoxLayout" name="horizontalLayout_3">
              <item>
-              <widget class="QLabel" name="label">
+              <widget class="QLabel" name="bufferSizeLabel">
                <property name="text">
                 <string>缓存大小</string>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QSpinBox" name="spinBox">
+              <widget class="QSpinBox" name="bufferSizeSpinBox">
                <property name="frame">
                 <bool>true</bool>
                </property>
@@ -209,7 +201,7 @@
             </layout>
            </widget>
           </widget>
-          <widget class="QTableView" name="tableView"/>
+          <widget class="QTableView" name="valueTableView"/>
          </widget>
         </widget>
        </item>

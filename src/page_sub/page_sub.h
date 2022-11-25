@@ -3,7 +3,10 @@
 #include <QWidget>
 
 QT_BEGIN_NAMESPACE
-namespace Ui { class PageSub; }
+namespace Ui
+{
+class PageSub;
+}
 QT_END_NAMESPACE
 
 class PageSub: public QWidget

@@ -13,8 +13,8 @@ PagePut::PagePut(QWidget *parent)
     QWidget(parent), ui(new Ui::PagePut)
 {
     ui->setupUi(this);
-    ui->splitter_top->setStretchFactor(0,1);
-    ui->splitter_top->setStretchFactor(1,4);
+    ui->splitter_top->setStretchFactor(0, 1);
+    ui->splitter_top->setStretchFactor(1, 4);
 }
 
 PagePut::~PagePut()

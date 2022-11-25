@@ -5,10 +5,13 @@
 #include "../qzenoh/qzenoh.h"
 
 QT_BEGIN_NAMESPACE
-namespace Ui { class PageSession; }
+namespace Ui
+{
+class PageSession;
+}
 QT_END_NAMESPACE
 
-class PageSession:public QWidget
+class PageSession: public QWidget
 {
 Q_OBJECT
 
@@ -20,7 +23,8 @@ public slots:
     void showConfig(ZConfig &zConfig);
 
 public:
-    ZConfig* getZConfig();
+    ZConfig *getZConfig();
+    void setSessionPushButtonChecked(bool b);
 
 signals:
     void sessionOpen(QSharedPointer<ZConfig> config);
