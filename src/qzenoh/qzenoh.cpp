@@ -29,6 +29,10 @@ bool QZenoh::declareSubscriber(QZSubscriber *subscriber)
         return false;
     }
 
+    if (!mapSub.contains(subscriber->name)) {
+        return false;
+    }
+
     z_owned_closure_sample_t callback;
     callback.context = (void *) subscriber;
     callback.call = QZSubscriber::callbackCall;
@@ -46,12 +50,22 @@ bool QZenoh::declareSubscriber(QZSubscriber *subscriber)
 
     subscriber->subscriber = sub;
 
+    mapSub.insert(subscriber->name, subscriber);
+
     return true;
 }
 
-void QZenoh::undeclareSubscriber(QString name)
+void QZenoh::undeclareSubscriber(const QString &name)
 {
+    auto it = mapSub.find(name);
+    if (it == mapSub.end()) {
+        return;
+    }
 
+    z_undeclare_subscriber(it.value()->subscriber);
+    delete it.value();
+
+    mapSub.remove(name);
 }
 
 ZConfig::ZConfig()
@@ -119,6 +133,7 @@ QZSubscriber::QZSubscriber(QString name, QString key, QObject *parent)
 QZSubscriber::~QZSubscriber()
 {
     delete opts;
+    delete subscriber;
 }
 void QZSubscriber::setOptions(z_reliability_t reliability)
 {

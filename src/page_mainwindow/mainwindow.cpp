@@ -8,7 +8,7 @@ MainWindow::MainWindow(QWidget *parent)
     qZenoh(nullptr)
 {
     ui->setupUi(this);
-    enableTabPage(false);
+    enableTabPage(true);
     connect_signals_slots();
 }
 

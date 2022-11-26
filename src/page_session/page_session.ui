@@ -77,7 +77,7 @@
             <height>1600</height>
            </size>
           </property>
-          <widget class="QWidget" name="">
+          <widget class="QWidget" name="layoutWidget">
            <property name="geometry">
             <rect>
              <x>10</x>
@@ -195,10 +195,13 @@ border-style: none
             <item>
              <layout class="QVBoxLayout" name="verticalLayout_3">
               <property name="spacing">
-               <number>0</number>
+               <number>5</number>
               </property>
               <item>
                <layout class="QHBoxLayout" name="horizontalLayout_2">
+                <property name="spacing">
+                 <number>10</number>
+                </property>
                 <property name="leftMargin">
                  <number>10</number>
                 </property>
@@ -302,10 +305,13 @@ border-style: none
             <item>
              <layout class="QVBoxLayout" name="verticalLayout_4">
               <property name="spacing">
-               <number>0</number>
+               <number>5</number>
               </property>
               <item>
                <layout class="QHBoxLayout" name="horizontalLayout_3">
+                <property name="spacing">
+                 <number>10</number>
+                </property>
                 <property name="leftMargin">
                  <number>10</number>
                 </property>

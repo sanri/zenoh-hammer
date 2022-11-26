@@ -108,10 +108,13 @@
      <widget class="QWidget" name="layoutWidget">
       <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1">
        <property name="spacing">
-        <number>0</number>
+        <number>10</number>
        </property>
        <property name="sizeConstraint">
         <enum>QLayout::SetDefaultConstraint</enum>
+       </property>
+       <property name="topMargin">
+        <number>10</number>
        </property>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_2">

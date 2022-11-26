@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QMainWindow>
-#include <QThread>
 
 #include "../qzenoh/qzenoh.h"
 
@@ -30,6 +29,5 @@ private:
 
 private:
     Ui::MainWindow *ui;
-    QThread workerThread;
     QZenoh *qZenoh;
 };

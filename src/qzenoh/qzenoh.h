@@ -89,7 +89,7 @@ public:
     bool declareSubscriber(QZSubscriber *subscriber);
 
     // 取消一个订阅
-    void undeclareSubscriber(QString name);
+    void undeclareSubscriber(const QString &name);
 
 private:
     z_owned_session_t *zSession = nullptr;
