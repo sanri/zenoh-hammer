@@ -145,9 +145,9 @@ ZSample::ZSample(const z_sample_t *sample)
     timestamp(&sample->timestamp),
     encoding(sample->encoding.prefix)
 {
-    char *key = z_keyexpr_to_string(sample->keyexpr);
-    keyexpr = QString(key);
-    free(key);
+    char *k = z_keyexpr_to_string(sample->keyexpr);
+    this->key = QString(k);
+    free(k);
 
     payload = QByteArray((char *) sample->payload.start, (qsizetype) sample->payload.len);
 }

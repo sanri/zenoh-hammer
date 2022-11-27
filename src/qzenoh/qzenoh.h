@@ -45,10 +45,11 @@ public:
     ~ZSample() = default;
 
 private:
-    QString keyexpr;
-    QByteArray payload;
+    QString key;
     ZTimestamp timestamp;
+    QByteArray payload;
     z_encoding_prefix_t encoding;
+    friend class SubDataValue;
 };
 
 class QZSubscriber: public QObject
