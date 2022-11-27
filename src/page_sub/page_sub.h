@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QAbstractListModel>
+#include <QModelIndex>
 #include <QQueue>
 #include "src/qzenoh/qzenoh.h"
 
@@ -15,13 +16,14 @@ QT_END_NAMESPACE
 class SubDataValue;
 class SubData;
 
-class StringListModel : public QAbstractListModel
+class StringListModel: public QAbstractListModel
 {
 Q_OBJECT
 
 public:
     explicit StringListModel(const QStringList &strings, QObject *parent = nullptr)
-        : QAbstractListModel(parent), stringList(strings) {}
+        : QAbstractListModel(parent), stringList(strings)
+    {}
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
@@ -52,6 +54,8 @@ public:
     SubTreeItem *parentItem();
 
     SubTreeItem *findKey(QString &n);
+    void sortChildren();
+    QString getKey();
 
 private:
     QList<SubTreeItem *> children;
@@ -60,7 +64,7 @@ private:
     SubTreeItem *parent;
 };
 
-class SubTreeModel : public QAbstractItemModel
+class SubTreeModel: public QAbstractItemModel
 {
 Q_OBJECT
 
@@ -81,17 +85,21 @@ public:
     // 增加新的变量到模型中
     // 返回 false: 表示此变量路径已在模型中, 不更新模型
     //     true:  表示此变量路径为新路径, 更新模型
-    bool addNewValueKey(QString &key) ;
+    bool addNewValueKey(QString &key);
+
+    // 返回完整路径
+    QString getPath(const QModelIndex &index);
 
 private:
     SubTreeItem *rootItem;
 };
 
-class SubDataValue{
+class SubDataValue
+{
 public:
     // 会消耗掉 sample
-    explicit SubDataValue(ZSample&sample);
-    ~SubDataValue()=default;
+    explicit SubDataValue(ZSample &sample);
+    ~SubDataValue() = default;
 
 private:
     QByteArray payload;
@@ -99,13 +107,14 @@ private:
     z_encoding_prefix_t encoding;
 };
 
-class SubDataList{
+class SubDataList
+{
 public:
-     SubDataList();
+    SubDataList();
     ~SubDataList();
 
 private:
-    QQueue<SubDataValue*> list;
+    QQueue<SubDataValue *> list;
 };
 
 class SubData
@@ -117,7 +126,7 @@ public:
 private:
     QString name;
     QString keyExpr;
-    QMap<QString, SubDataList*> list;
+    QMap<QString, SubDataList *> list;
 };
 
 class PageSub: public QWidget
@@ -128,8 +137,16 @@ public:
     explicit PageSub(QWidget *parent = nullptr);
     ~PageSub() override;
 
+public slots:
+    void clear_clicked(bool checked);
+    void keyTreeView_clicked(const QModelIndex &index);
+
+private:
+    void connect_signals_slots();
+
 private:
     Ui::PageSub *ui;
+    SubTreeModel *treeModel = nullptr;
 };
 
 

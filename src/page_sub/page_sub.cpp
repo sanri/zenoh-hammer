@@ -1,9 +1,4 @@
-//
-// Created by 唐晶 on 2022/11/23.
-//
-
-// You may need to build the project (run Qt uic code generator) to get "ui_page_sub.h" resolved
-
+#include <algorithm>
 #include <QFileSystemModel>
 #include <utility>
 #include "page_sub.h"
@@ -15,21 +10,59 @@ PageSub::PageSub(QWidget *parent)
     QWidget(parent), ui(new Ui::PageSub)
 {
     ui->setupUi(this);
+    connect_signals_slots();
     ui->splitter_top->setStretchFactor(0, 1);
     ui->splitter_top->setStretchFactor(1, 4);
-    ui->splitter_level1->setStretchFactor(0,1);
-    ui->splitter_level1->setStretchFactor(1,2);
+    ui->splitter_level1->setStretchFactor(0, 1);
+    ui->splitter_level1->setStretchFactor(1, 2);
 
-    QStringList list = QStringList {"abc","def","ghi","jkl","mno"};
+    QStringList list = QStringList{"abc", "def", "ghi", "jkl", "mno"};
     auto mode = new StringListModel(list);
     ui->valueTableView->setModel(mode);
     ui->valueTableView->setRootIndex(QModelIndex());
 
+    treeModel = new SubTreeModel();
+    QString k;
+    k = "demo/example/test1/b";
+    treeModel->addNewValueKey(k);
+    k = "demo/example/test1/a";
+    treeModel->addNewValueKey(k);
+    k = "demo1/example/test3/a";
+    treeModel->addNewValueKey(k);
+    k = "demo/example/test2/c";
+    treeModel->addNewValueKey(k);
+    k = "demo1/example/test3/a";
+    treeModel->addNewValueKey(k);
+
+
+    ui->keyTreeView->setModel(treeModel);
+    ui->keyTreeView->setRootIndex(QModelIndex());
 }
 
 PageSub::~PageSub()
 {
     delete ui;
+}
+
+void PageSub::clear_clicked(bool checked)
+{
+    static int i = 0;
+    QString k = QString("demo2/test/%1").arg(i);
+    treeModel->addNewValueKey(k);
+    qDebug() << "clear_clicked:" << k;
+    i += 1;
+}
+
+void PageSub::connect_signals_slots()
+{
+    connect(ui->clear, &QPushButton::clicked, this, &PageSub::clear_clicked);
+    connect(ui->keyTreeView, &QTreeView::clicked, this, &PageSub::keyTreeView_clicked);
+}
+
+void PageSub::keyTreeView_clicked(const QModelIndex &index)
+{
+    QString path = treeModel->getPath(index);
+    qDebug() << path;
 }
 
 int StringListModel::rowCount(const QModelIndex &parent) const
@@ -59,7 +92,6 @@ QVariant StringListModel::headerData(int section, Qt::Orientation orientation, i
     if (orientation == Qt::Horizontal)
         return QStringLiteral("Column %1").arg(section);
     else
-//        return QVariant();
         return QStringLiteral("%1").arg(section);
 }
 
@@ -80,8 +112,9 @@ bool StringListModel::setData(const QModelIndex &index, const QVariant &value, i
     }
     return false;
 }
-SubTreeItem::SubTreeItem(QString  key,bool isValue, SubTreeItem *parentItem):
-    key(std::move(key)), parent(parentItem),isValue(isValue)
+SubTreeItem::SubTreeItem(QString key, bool isValue, SubTreeItem *parentItem)
+    :
+    key(std::move(key)), parent(parentItem), isValue(isValue)
 {
 
 }
@@ -129,7 +162,7 @@ QVariant SubTreeItem::data(int column) const
 int SubTreeItem::row() const
 {
     if (parent)
-        return parent->children.indexOf(const_cast<SubTreeItem*>(this));
+        return parent->children.indexOf(const_cast<SubTreeItem *>(this));
 
     return 0;
 }
@@ -141,15 +174,29 @@ SubTreeItem *SubTreeItem::parentItem()
 
 SubTreeItem *SubTreeItem::findKey(QString &n)
 {
-    for(SubTreeItem*item:children){
-        if (item->key == n){
+    for (SubTreeItem *item: children) {
+        if (item->key == n) {
             return item;
         }
     }
     return nullptr;
 }
 
-SubTreeModel::SubTreeModel(QObject *parent):
+void SubTreeItem::sortChildren()
+{
+    std::sort(children.begin(), children.end(), [](SubTreeItem *a, SubTreeItem *b)
+    {
+        return (a->key < b->key);
+    });
+}
+
+QString SubTreeItem::getKey()
+{
+    return key;
+}
+
+SubTreeModel::SubTreeModel(QObject *parent)
+    :
     QAbstractItemModel(parent)
 {
     rootItem = new SubTreeItem("", false);
@@ -168,7 +215,7 @@ QVariant SubTreeModel::data(const QModelIndex &index, int role) const
     if (role != Qt::DisplayRole)
         return QVariant();
 
-    SubTreeItem *item = static_cast<SubTreeItem*>(index.internalPointer());
+    SubTreeItem *item = static_cast<SubTreeItem *>(index.internalPointer());
 
     return item->data(index.column());
 }
@@ -204,7 +251,7 @@ QModelIndex SubTreeModel::index(int row, int column, const QModelIndex &parent) 
     if (!parent.isValid())
         parentItem = rootItem;
     else
-        parentItem = static_cast<SubTreeItem*>(parent.internalPointer());
+        parentItem = static_cast<SubTreeItem *>(parent.internalPointer());
 
     SubTreeItem *childItem = parentItem->child(row);
     if (childItem)
@@ -217,7 +264,7 @@ QModelIndex SubTreeModel::parent(const QModelIndex &index) const
     if (!index.isValid())
         return QModelIndex();
 
-    SubTreeItem *childItem = static_cast<SubTreeItem*>(index.internalPointer());
+    SubTreeItem *childItem = static_cast<SubTreeItem *>(index.internalPointer());
     SubTreeItem *parentItem = childItem->parentItem();
 
     if (parentItem == rootItem)
@@ -235,7 +282,7 @@ int SubTreeModel::rowCount(const QModelIndex &parent) const
     if (!parent.isValid())
         parentItem = rootItem;
     else
-        parentItem = static_cast<SubTreeItem*>(parent.internalPointer());
+        parentItem = static_cast<SubTreeItem *>(parent.internalPointer());
 
     return parentItem->childCount();
 }
@@ -243,7 +290,7 @@ int SubTreeModel::rowCount(const QModelIndex &parent) const
 int SubTreeModel::columnCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
-        return static_cast<SubTreeItem*>(parent.internalPointer())->columnCount();
+        return static_cast<SubTreeItem *>(parent.internalPointer())->columnCount();
     return rootItem->columnCount();
 }
 
@@ -251,18 +298,45 @@ bool SubTreeModel::addNewValueKey(QString &key)
 {
     auto key_list = key.split(u'/');
     SubTreeItem *item = rootItem;
-    for (QString n: key_list) {
-        SubTreeItem *item_new = item->findKey(n);
+    for (int i = 0; i < key_list.count(); i++) {
+        SubTreeItem *item_new = item->findKey(key_list[i]);
         if (item_new == nullptr) {
+            // 判断是否为叶节点
+            bool isValue = (i == (key_list.count() - 1));
+            // 获得父节点 index
+            QModelIndex idx = (item == rootItem) ? QModelIndex() : createIndex(item->row(), 0, item);
 
+            // 开始更新
+            beginInsertRows(idx, 0, item->childCount());
+            item_new = new SubTreeItem(key_list[i], isValue, item);
+            item->appendChild(item_new);
+            item->sortChildren();
+            endInsertRows();
+
+            if (isValue) {
+                return true;
+            }
         }
+        item = item_new;
     }
 
     return false;
 }
 
-SubDataValue::SubDataValue(ZSample &sample):
-    timestamp(sample.timestamp),encoding(sample.encoding),payload(std::move(sample.payload))
+QString SubTreeModel::getPath(const QModelIndex &index)
+{
+    SubTreeItem *item = static_cast<SubTreeItem *>(index.internalPointer());
+    QQueue<QString> queue;
+    while (item != rootItem) {
+        queue.push_front(item->getKey());
+        item = item->parentItem();
+    }
+    return queue.join(u'/');
+}
+
+SubDataValue::SubDataValue(ZSample &sample)
+    :
+    timestamp(sample.timestamp), encoding(sample.encoding), payload(std::move(sample.payload))
 {
 
 }
