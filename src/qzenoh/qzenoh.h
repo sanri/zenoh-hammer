@@ -15,7 +15,15 @@ class ZTimestamp
 {
 public:
     explicit ZTimestamp(const z_timestamp_t *time);
+    ZTimestamp() = default;
+    ZTimestamp(uint32_t secs, uint32_t ms);
     ~ZTimestamp() = default;
+
+    uint32_t getSecs() const;
+    void setSecs(uint32_t secs);
+    uint32_t getMsec() const;
+    void setMsec(uint32_t msec);
+    QString format() const;
 
 private:
     uint64_t time;
@@ -49,7 +57,7 @@ private:
     ZTimestamp timestamp;
     QByteArray payload;
     z_encoding_prefix_t encoding;
-    friend class SubDataValue;
+    friend class SubDataItem;
 };
 
 class QZSubscriber: public QObject

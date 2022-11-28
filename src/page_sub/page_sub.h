@@ -13,30 +13,9 @@ class PageSub;
 }
 QT_END_NAMESPACE
 
-class SubDataValue;
+class SubDataItem;
 class SubData;
-
-class StringListModel: public QAbstractListModel
-{
-Q_OBJECT
-
-public:
-    explicit StringListModel(const QStringList &strings, QObject *parent = nullptr)
-        : QAbstractListModel(parent), stringList(strings)
-    {}
-
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role) const override;
-    QVariant headerData(int section, Qt::Orientation orientation,
-                        int role = Qt::DisplayRole) const override;
-
-    Qt::ItemFlags flags(const QModelIndex &index) const override;
-    bool setData(const QModelIndex &index, const QVariant &value,
-                 int role = Qt::EditRole) override;
-
-private:
-    QStringList stringList;
-};
+class SubDataList;
 
 class SubTreeItem
 {
@@ -94,39 +73,67 @@ private:
     SubTreeItem *rootItem;
 };
 
-class SubDataValue
+// 表结构
+// 值 | 类型 | Zenoh时间戳 | 本机时间戳
+class SubDataItem
 {
 public:
     // 会消耗掉 sample
-    explicit SubDataValue(ZSample &sample);
-    ~SubDataValue() = default;
+    explicit SubDataItem(ZSample &sample);
+    explicit SubDataItem(int i);
+    explicit SubDataItem(double f);
+    explicit SubDataItem(QString s);
+    ~SubDataItem() = default;
+
+    QVariant get(int index) const;
+    static int column();
+
+private:
+    QVariant payloadToV() const;
+    QVariant timestampToV() const;
+    QVariant encodingToV() const;
+    QVariant timeNowToV() const;
 
 private:
     QByteArray payload;
     ZTimestamp timestamp;
+    std::chrono::time_point<std::chrono::system_clock> timeNow;
     z_encoding_prefix_t encoding;
 };
 
-class SubDataList
+// 表结构
+// 值 | 类型 | Zenoh时间戳 | 本机时间戳
+class SubTableModel: public QAbstractTableModel
 {
+Q_OBJECT
+
 public:
-    SubDataList();
-    ~SubDataList();
+    explicit SubTableModel(QObject *parent = nullptr);
+    ~SubTableModel();
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QVariant headerData(int section, Qt::Orientation orientation,
+                        int role = Qt::DisplayRole) const override;
+    void addData(SubDataItem *data);
 
 private:
-    QQueue<SubDataValue *> list;
+    QQueue<SubDataItem *> queue;
 };
 
 class SubData
 {
 public:
-    SubData() = default;
+    SubData(QString name, QString keyExpr);
     ~SubData() = default;
+    QString getName();
+    QString getKeyExpr();
 
 private:
-    QString name;
-    QString keyExpr;
-    QMap<QString, SubDataList *> list;
+    const QString name;
+    const QString keyExpr;
+    QMap<QString, SubTableModel *> map;
 };
 
 class PageSub: public QWidget
@@ -146,7 +153,9 @@ private:
 
 private:
     Ui::PageSub *ui;
-    SubTreeModel *treeModel = nullptr;
+    SubTreeModel *treeModelNow = nullptr;
+    SubTableModel *tableModelNow = nullptr;
+    QMap<QString, SubData *> map;
 };
 
 

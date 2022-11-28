@@ -1,6 +1,9 @@
 #include <algorithm>
+#include <sstream>
+#include <chrono>
 #include <QFileSystemModel>
 #include <utility>
+#include <iomanip>
 #include "page_sub.h"
 #include "ui_page_sub.h"
 
@@ -16,27 +19,34 @@ PageSub::PageSub(QWidget *parent)
     ui->splitter_level1->setStretchFactor(0, 1);
     ui->splitter_level1->setStretchFactor(1, 2);
 
-    QStringList list = QStringList{"abc", "def", "ghi", "jkl", "mno"};
-    auto mode = new StringListModel(list);
-    ui->valueTableView->setModel(mode);
-    ui->valueTableView->setRootIndex(QModelIndex());
-
-    treeModel = new SubTreeModel();
+    treeModelNow = new SubTreeModel();
     QString k;
     k = "demo/example/test1/b";
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
     k = "demo/example/test1/a";
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
     k = "demo1/example/test3/a";
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
     k = "demo/example/test2/c";
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
     k = "demo1/example/test3/a";
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
 
-
-    ui->keyTreeView->setModel(treeModel);
+    ui->keyTreeView->setModel(treeModelNow);
     ui->keyTreeView->setRootIndex(QModelIndex());
+
+    tableModelNow = new SubTableModel();
+    SubDataItem *it;
+    it = new SubDataItem(20);
+    tableModelNow->addData(it);
+    it = new SubDataItem(45.3);
+    tableModelNow->addData(it);
+    it = new SubDataItem("hello");
+    tableModelNow->addData(it);
+
+    ui->valueTableView->setModel(tableModelNow);
+    ui->valueTableView->setRootIndex(QModelIndex());
+
 }
 
 PageSub::~PageSub()
@@ -48,7 +58,7 @@ void PageSub::clear_clicked(bool checked)
 {
     static int i = 0;
     QString k = QString("demo2/test/%1").arg(i);
-    treeModel->addNewValueKey(k);
+    treeModelNow->addNewValueKey(k);
     qDebug() << "clear_clicked:" << k;
     i += 1;
 }
@@ -61,57 +71,10 @@ void PageSub::connect_signals_slots()
 
 void PageSub::keyTreeView_clicked(const QModelIndex &index)
 {
-    QString path = treeModel->getPath(index);
-    qDebug() << path;
+    QString path = treeModelNow->getPath(index);
+    ui->selectKey->setText(path);
 }
 
-int StringListModel::rowCount(const QModelIndex &parent) const
-{
-    return stringList.count();
-}
-
-QVariant StringListModel::data(const QModelIndex &index, int role) const
-{
-    if (!index.isValid())
-        return QVariant();
-
-    if (index.row() >= stringList.size())
-        return QVariant();
-
-    if (role == Qt::DisplayRole || role == Qt::EditRole)
-        return stringList.at(index.row());
-    else
-        return QVariant();
-}
-
-QVariant StringListModel::headerData(int section, Qt::Orientation orientation, int role) const
-{
-    if (role != Qt::DisplayRole)
-        return QVariant();
-
-    if (orientation == Qt::Horizontal)
-        return QStringLiteral("Column %1").arg(section);
-    else
-        return QStringLiteral("%1").arg(section);
-}
-
-Qt::ItemFlags StringListModel::flags(const QModelIndex &index) const
-{
-    if (!index.isValid())
-        return Qt::ItemIsEnabled;
-
-    return QAbstractListModel::flags(index) | Qt::ItemIsEditable;
-}
-
-bool StringListModel::setData(const QModelIndex &index, const QVariant &value, int role)
-{
-    if (index.isValid() && role == Qt::EditRole) {
-        stringList.replace(index.row(), value.toString());
-        emit dataChanged(index, index, {role});
-        return true;
-    }
-    return false;
-}
 SubTreeItem::SubTreeItem(QString key, bool isValue, SubTreeItem *parentItem)
     :
     key(std::move(key)), parent(parentItem), isValue(isValue)
@@ -334,19 +297,209 @@ QString SubTreeModel::getPath(const QModelIndex &index)
     return queue.join(u'/');
 }
 
-SubDataValue::SubDataValue(ZSample &sample)
+SubDataItem::SubDataItem(ZSample &sample)
     :
     timestamp(sample.timestamp), encoding(sample.encoding), payload(std::move(sample.payload))
 {
+    timeNow = std::chrono::system_clock::now();
+}
+
+SubDataItem::SubDataItem(int i)
+{
+    payload =  QString::number(i).toUtf8();
+    timeNow = std::chrono::system_clock::now();
+    encoding = Z_ENCODING_PREFIX_APP_INTEGER;
+    timestamp = ZTimestamp(1000,123);
+}
+
+SubDataItem::SubDataItem(double f)
+{
+    payload =  QString::number(f).toUtf8();
+    timeNow = std::chrono::system_clock::now();
+    encoding = Z_ENCODING_PREFIX_APP_FLOAT;
+    timestamp = ZTimestamp(2000,321);
 
 }
 
-SubDataList::SubDataList()
+SubDataItem::SubDataItem(QString s)
+{
+    payload =  s.toUtf8();
+    timeNow = std::chrono::system_clock::now();
+    encoding = Z_ENCODING_PREFIX_TEXT_PLAIN;
+    timestamp = ZTimestamp(3000,567);
+}
+
+QVariant SubDataItem::get(int index) const
+{
+    switch (index) {
+    case 0:return payloadToV();
+    case 1:return encodingToV();
+    case 2:return timestampToV();
+    case 3:return timeNowToV();
+    default:return {};
+    }
+}
+
+int SubDataItem::column()
+{
+    return 4;
+}
+
+QVariant SubDataItem::payloadToV() const
+{
+    switch (encoding) {
+    case Z_ENCODING_PREFIX_EMPTY:return {};
+    case Z_ENCODING_PREFIX_APP_OCTET_STREAM:break;
+    case Z_ENCODING_PREFIX_APP_CUSTOM:break;
+    case Z_ENCODING_PREFIX_TEXT_PLAIN:
+        if (payload.length() < 80)
+            return {QString(payload)};
+        break;
+    case Z_ENCODING_PREFIX_APP_PROPERTIES:break;
+    case Z_ENCODING_PREFIX_APP_JSON:
+        if (payload.length() < 80)
+            return {QString(payload)};
+        break;
+    case Z_ENCODING_PREFIX_APP_SQL:break;
+    case Z_ENCODING_PREFIX_APP_INTEGER:return {QString(payload)};
+    case Z_ENCODING_PREFIX_APP_FLOAT:return {QString(payload)};
+    case Z_ENCODING_PREFIX_APP_XML:break;
+    case Z_ENCODING_PREFIX_APP_XHTML_XML:break;
+    case Z_ENCODING_PREFIX_APP_X_WWW_FORM_URLENCODED:break;
+    case Z_ENCODING_PREFIX_TEXT_JSON:
+        if (payload.length() < 80)
+            return {QString(payload)};
+        break;
+    case Z_ENCODING_PREFIX_TEXT_HTML:break;
+    case Z_ENCODING_PREFIX_TEXT_XML:break;
+    case Z_ENCODING_PREFIX_TEXT_CSS:break;
+    case Z_ENCODING_PREFIX_TEXT_CSV:break;
+    case Z_ENCODING_PREFIX_TEXT_JAVASCRIPT:break;
+    case Z_ENCODING_PREFIX_IMAGE_JPEG:break;
+    case Z_ENCODING_PREFIX_IMAGE_PNG:break;
+    case Z_ENCODING_PREFIX_IMAGE_GIF:break;
+    default: return {};
+    }
+    return {"..."};
+}
+
+QVariant SubDataItem::timestampToV() const
+{
+    return {timestamp.format()};
+}
+
+QVariant SubDataItem::encodingToV() const
+{
+    switch (encoding) {
+    case Z_ENCODING_PREFIX_EMPTY:return {};
+    case Z_ENCODING_PREFIX_APP_OCTET_STREAM:return {"app_octet_stream"};
+    case Z_ENCODING_PREFIX_APP_CUSTOM:return {"app_custom"};
+    case Z_ENCODING_PREFIX_TEXT_PLAIN:return {"text_plain"};
+    case Z_ENCODING_PREFIX_APP_PROPERTIES:return {"app_properties"};
+    case Z_ENCODING_PREFIX_APP_JSON:return {"app_json"};
+    case Z_ENCODING_PREFIX_APP_SQL:return {"app_sql"};
+    case Z_ENCODING_PREFIX_APP_INTEGER:return {"app_integer"};
+    case Z_ENCODING_PREFIX_APP_FLOAT:return {"app_float"};
+    case Z_ENCODING_PREFIX_APP_XML:return {"app_xml"};
+    case Z_ENCODING_PREFIX_APP_XHTML_XML:return {"app_xhtml_xml"};
+    case Z_ENCODING_PREFIX_APP_X_WWW_FORM_URLENCODED:return {"app_x_www_form_urlencoded"};
+    case Z_ENCODING_PREFIX_TEXT_JSON:return {"text_json"};
+    case Z_ENCODING_PREFIX_TEXT_HTML:return {"text_html"};
+    case Z_ENCODING_PREFIX_TEXT_XML:return {"text_xml"};
+    case Z_ENCODING_PREFIX_TEXT_CSS:return {"text_css"};
+    case Z_ENCODING_PREFIX_TEXT_CSV:return {"text_csv"};
+    case Z_ENCODING_PREFIX_TEXT_JAVASCRIPT:return {"text_javascript"};
+    case Z_ENCODING_PREFIX_IMAGE_JPEG:return {"image_jpeg"};
+    case Z_ENCODING_PREFIX_IMAGE_PNG:return {"image_png"};
+    case Z_ENCODING_PREFIX_IMAGE_GIF:return {"image_gif"};
+    default:return {};
+    }
+}
+
+QVariant SubDataItem::timeNowToV() const
+{
+    std::time_t t_c = std::chrono::system_clock::to_time_t(timeNow);
+    std::ostringstream o;
+    o << std::put_time(std::localtime(&t_c), "%F %T.");
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeNow.time_since_epoch());
+    int milltime = ms.count() % 1000;
+    QString datetime = QString(o.str().c_str()) + QString::number(milltime);
+    return {datetime};
+}
+
+
+SubTableModel::SubTableModel(QObject *parent)
+    : QAbstractTableModel(parent)
+{}
+
+SubTableModel::~SubTableModel()
+{
+    qDeleteAll(queue);
+}
+
+int SubTableModel::rowCount(const QModelIndex &parent) const
+{
+    return (int) queue.count();
+}
+
+int SubTableModel::columnCount(const QModelIndex &parent) const
+{
+    return SubDataItem::column();
+}
+
+QVariant SubTableModel::data(const QModelIndex &index, int role) const
+{
+    if (role != Qt::DisplayRole)
+        return {};
+
+    int row = index.row();
+    if ((row < 0) || (row >= queue.count()))
+        return {};
+    SubDataItem *item = queue[row];
+
+    return item->get(index.column());
+}
+
+QVariant SubTableModel::headerData(int section, Qt::Orientation orientation, int role) const
+{
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
+        if (section == 0)
+            return {tr("值")};
+        else if (section == 1)
+            return {tr("类型")};
+        else if (section == 2)
+            return {tr("Zenoh时间戳")};
+        else if (section == 3)
+            return {tr("本机时间戳")};
+        else
+            return {};
+    }
+    return {};
+}
+
+void SubTableModel::addData(SubDataItem *data)
+{
+    int first_row = queue.count() - 1;
+    if (first_row < 0) first_row = 0;
+    int last_row = queue.count();
+    beginInsertRows(QModelIndex(), first_row, last_row);
+    queue.push_back(data);
+    endInsertRows();
+}
+
+SubData::SubData(QString name, QString keyExpr)
+    :
+    name(std::move(name)), keyExpr(std::move(keyExpr))
 {
 
 }
 
-SubDataList::~SubDataList()
+QString SubData::getName()
 {
-    qDeleteAll(list);
+    return name;
+}
+
+QString SubData::getKeyExpr()
+{
+    return keyExpr;
 }

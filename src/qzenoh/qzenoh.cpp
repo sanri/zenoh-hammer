@@ -1,5 +1,7 @@
 #include "qzenoh.h"
 #include <memory>
+#include <sstream>
+#include <iomanip>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <utility>
@@ -157,3 +159,43 @@ ZTimestamp::ZTimestamp(const z_timestamp_t *time)
     this->time = time->time;
     this->id = QByteArray((char *) time->id.start, (qsizetype) time->id.len);
 }
+
+ZTimestamp::ZTimestamp(uint32_t secs, uint32_t ms)
+{
+    setSecs(secs);
+    setMsec(ms);
+}
+
+uint32_t ZTimestamp::getSecs() const
+{
+    return (uint32_t) (time >> 32);
+}
+
+void ZTimestamp::setSecs(uint32_t secs)
+{
+    uint64_t t = ((uint64_t) secs) << 32;
+    time = (time & 0x00000000ffffffff) | t;
+}
+
+uint32_t ZTimestamp::getMsec() const
+{
+    uint64_t frac = time & 0xFFFFFFFF;
+    return (uint32_t) ((frac * 1000000000ull) / (1ull << 32));
+}
+
+void ZTimestamp::setMsec(uint32_t msec)
+{
+    uint64_t frac = ((uint64_t) msec) * (1ull << 32) / 1000000000ull;
+    time = (time & 0xffffffff00000000) | frac;
+}
+
+QString ZTimestamp::format() const
+{
+    time_t t_c = getSecs();
+    std::ostringstream o;
+    o << std::put_time(std::localtime(&t_c), "%F %T.");
+    int milltime = getMsec();
+    QString datetime = QString(o.str().c_str()) + QString::number(milltime);
+    return datetime;
+}
+
