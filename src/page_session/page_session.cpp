@@ -172,20 +172,20 @@ void PageSession::sessionPushButton_clicked(bool check)
         return;
     }
 
-    auto p = getZConfig();
-    if (p == nullptr) {
+    auto config = getZConfig();
+    if (config == nullptr) {
         ui->sessionPushButton->setChecked(false);
         return;
     }
 
     QMetaMethod signalStatus = QMetaMethod::fromSignal(&PageSession::sessionOpen);
     if (isSignalConnected(signalStatus)) {
-        auto config = QSharedPointer<ZConfig>(p);
         emit sessionOpen(config);
         qDebug() << "emit sessionOpen";
     }
     else {
         ui->sessionPushButton->setChecked(false);
+        delete config;
     }
 }
 

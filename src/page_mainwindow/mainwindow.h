@@ -20,8 +20,15 @@ public:
     ~MainWindow();
 
 public slots:
-    void sessionOpen(QSharedPointer<ZConfig> config);
+    void sessionOpen(ZConfig *config);
     void sessionClose();
+    void newSubscriber(QString name, QString keyExpr);
+    void delSubscriber(QString name);
+
+signals:
+    // 如果注册失败, 发送空指针
+    void newSubscriberResult(QZSubscriber *subscriber);
+    void delSubscriberResult(QString name);
 
 private:
     void connect_signals_slots();

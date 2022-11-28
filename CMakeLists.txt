@@ -39,6 +39,9 @@ set(PROJECT_SOURCES
         src/page_get/page_get.ui
         src/qzenoh/qzenoh.cpp
         src/qzenoh/qzenoh.h
+        src/page_sub/dialog_add_sub.cpp
+        src/page_sub/dialog_add_sub.h
+        src/page_sub/dialog_add_sub.ui
         )
 
 qt_add_executable(zenoh-hammer

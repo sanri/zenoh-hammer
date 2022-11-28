@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-#include <QSharedPointer>
 #include "../qzenoh/qzenoh.h"
 
 QT_BEGIN_NAMESPACE
@@ -27,7 +26,7 @@ public:
     void setSessionPushButtonChecked(bool b);
 
 signals:
-    void sessionOpen(QSharedPointer<ZConfig> config);
+    void sessionOpen(ZConfig *config);
     void sessionClose();
 
 private slots:

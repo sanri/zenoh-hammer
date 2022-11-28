@@ -390,7 +390,7 @@ border-style: none
                <widget class="QListWidget" name="listenListWidget">
                 <item>
                  <property name="text">
-                  <string notr="true">tcp/127.0.0.1:7447</string>
+                  <string notr="true">tcp/127.0.0.1:8000</string>
                  </property>
                  <property name="font">
                   <font>

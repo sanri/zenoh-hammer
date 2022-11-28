@@ -3,8 +3,10 @@
 #include <QWidget>
 #include <QAbstractListModel>
 #include <QModelIndex>
+#include <QListWidget>
 #include <QQueue>
 #include "src/qzenoh/qzenoh.h"
+#include "dialog_add_sub.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui
@@ -48,7 +50,7 @@ class SubTreeModel: public QAbstractItemModel
 Q_OBJECT
 
 public:
-    explicit SubTreeModel(QObject *parent = nullptr);
+    explicit SubTreeModel(QString name, QObject *parent = nullptr);
     ~SubTreeModel();
 
     QVariant data(const QModelIndex &index, int role) const override;
@@ -68,8 +70,10 @@ public:
 
     // 返回完整路径
     QString getPath(const QModelIndex &index);
+    QString getName() const;
 
 private:
+    const QString name;
     SubTreeItem *rootItem;
 };
 
@@ -129,11 +133,17 @@ public:
     ~SubData() = default;
     QString getName();
     QString getKeyExpr();
+    SubTreeModel *getTreeModel();
+    SubTableModel *getTableModel(QString key);
+    void updateTreeModel(QString key);
+    void updateTableModel(const QSharedPointer<ZSample> sample);
 
 private:
     const QString name;
     const QString keyExpr;
+    // key
     QMap<QString, SubTableModel *> map;
+    SubTreeModel *treeModel;
 };
 
 class PageSub: public QWidget
@@ -147,14 +157,26 @@ public:
 public slots:
     void clear_clicked(bool checked);
     void keyTreeView_clicked(const QModelIndex &index);
+    void subListWidget_clicked(QListWidgetItem *item);
+    void subAdd_clicked(bool checked);
+    void subDel_clicked(bool checked);
+    void newSubMsg(QString name, const QSharedPointer<ZSample> sample);
+
+    // 如果注册失败, 返回空指针
+    void newSubscriberResult(QZSubscriber *subscriber);
+    void delSubscriberResult(QString name);
+
+signals:
+    void newSubscriber(QString name, QString keyExpr);
+    void delSubscriber(QString name);
 
 private:
     void connect_signals_slots();
+    SubData *getSubData(QString name);
 
 private:
     Ui::PageSub *ui;
-    SubTreeModel *treeModelNow = nullptr;
-    SubTableModel *tableModelNow = nullptr;
+    // name
     QMap<QString, SubData *> map;
 };
 

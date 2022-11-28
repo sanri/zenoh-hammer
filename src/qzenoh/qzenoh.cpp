@@ -16,7 +16,6 @@ QZenoh::QZenoh(ZConfig *config, QObject *parent)
 
 QZenoh::~QZenoh()
 {
-    z_close(zSession);
     delete zSession;
 }
 
@@ -25,13 +24,18 @@ bool QZenoh::checkOpen()
     return z_check(*zSession);
 }
 
+bool QZenoh::close()
+{
+    return (z_close(zSession) == 0);
+}
+
 bool QZenoh::declareSubscriber(QZSubscriber *subscriber)
 {
     if (!checkOpen()) {
         return false;
     }
 
-    if (!mapSub.contains(subscriber->name)) {
+    if (mapSub.contains(subscriber->name)) {
         return false;
     }
 
@@ -40,7 +44,7 @@ bool QZenoh::declareSubscriber(QZSubscriber *subscriber)
     callback.call = QZSubscriber::callbackCall;
     callback.drop = nullptr;
 
-    z_keyexpr_t key = z_keyexpr(subscriber->key.toStdString().c_str());
+    z_keyexpr_t key = z_keyexpr(subscriber->keyExpr.toStdString().c_str());
 
     auto sub = new z_owned_subscriber_t;
     *sub = z_declare_subscriber(z_session_loan(zSession), key, &callback, subscriber->opts);
@@ -63,6 +67,7 @@ void QZenoh::undeclareSubscriber(const QString &name)
     if (it == mapSub.end()) {
         return;
     }
+    disconnect(it.value(), nullptr, nullptr, nullptr);
 
     z_undeclare_subscriber(it.value()->subscriber);
     delete it.value();
@@ -122,11 +127,11 @@ void QZSubscriber::callbackCall(const z_sample_t *sample, void *context)
 {
     auto subscriber = (QZSubscriber *) context;
     auto p = QSharedPointer<ZSample>(new ZSample(sample));
-    emit subscriber->newSubMsg(p);
+    emit subscriber->newSubMsg(subscriber->name, p);
 }
 
 QZSubscriber::QZSubscriber(QString name, QString key, QObject *parent)
-    : QObject(parent), name(std::move(name)), key(std::move(key))
+    : QObject(parent), name(std::move(name)), keyExpr(std::move(key))
 {
     opts = new z_subscriber_options_t;
     opts->reliability = z_reliability_t::Z_RELIABILITY_RELIABLE;
@@ -142,6 +147,16 @@ void QZSubscriber::setOptions(z_reliability_t reliability)
     opts->reliability = reliability;
 }
 
+QString QZSubscriber::getName()
+{
+    return name;
+}
+
+QString QZSubscriber::getKeyExpr()
+{
+    return keyExpr;
+}
+
 ZSample::ZSample(const z_sample_t *sample)
     :
     timestamp(&sample->timestamp),
@@ -152,6 +167,11 @@ ZSample::ZSample(const z_sample_t *sample)
     free(k);
 
     payload = QByteArray((char *) sample->payload.start, (qsizetype) sample->payload.len);
+}
+
+QString ZSample::getKey() const
+{
+    return key;
 }
 
 ZTimestamp::ZTimestamp(const z_timestamp_t *time)

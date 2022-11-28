@@ -4,8 +4,10 @@
 #include <QFileSystemModel>
 #include <utility>
 #include <iomanip>
+#include <QMessageBox>
 #include "page_sub.h"
 #include "ui_page_sub.h"
+#include "../page_mainwindow/mainwindow.h"
 
 
 PageSub::PageSub(QWidget *parent)
@@ -17,36 +19,7 @@ PageSub::PageSub(QWidget *parent)
     ui->splitter_top->setStretchFactor(0, 1);
     ui->splitter_top->setStretchFactor(1, 4);
     ui->splitter_level1->setStretchFactor(0, 1);
-    ui->splitter_level1->setStretchFactor(1, 2);
-
-    treeModelNow = new SubTreeModel();
-    QString k;
-    k = "demo/example/test1/b";
-    treeModelNow->addNewValueKey(k);
-    k = "demo/example/test1/a";
-    treeModelNow->addNewValueKey(k);
-    k = "demo1/example/test3/a";
-    treeModelNow->addNewValueKey(k);
-    k = "demo/example/test2/c";
-    treeModelNow->addNewValueKey(k);
-    k = "demo1/example/test3/a";
-    treeModelNow->addNewValueKey(k);
-
-    ui->keyTreeView->setModel(treeModelNow);
-    ui->keyTreeView->setRootIndex(QModelIndex());
-
-    tableModelNow = new SubTableModel();
-    SubDataItem *it;
-    it = new SubDataItem(20);
-    tableModelNow->addData(it);
-    it = new SubDataItem(45.3);
-    tableModelNow->addData(it);
-    it = new SubDataItem("hello");
-    tableModelNow->addData(it);
-
-    ui->valueTableView->setModel(tableModelNow);
-    ui->valueTableView->setRootIndex(QModelIndex());
-
+    ui->splitter_level1->setStretchFactor(1, 3);
 }
 
 PageSub::~PageSub()
@@ -56,23 +29,123 @@ PageSub::~PageSub()
 
 void PageSub::clear_clicked(bool checked)
 {
-    static int i = 0;
-    QString k = QString("demo2/test/%1").arg(i);
-    treeModelNow->addNewValueKey(k);
-    qDebug() << "clear_clicked:" << k;
-    i += 1;
 }
 
 void PageSub::connect_signals_slots()
 {
     connect(ui->clear, &QPushButton::clicked, this, &PageSub::clear_clicked);
+    connect(ui->subAdd, &QPushButton::clicked, this, &PageSub::subAdd_clicked);
+    connect(ui->subDel, &QPushButton::clicked, this, &PageSub::subDel_clicked);
     connect(ui->keyTreeView, &QTreeView::clicked, this, &PageSub::keyTreeView_clicked);
+    connect(ui->subListWidget,&QListWidget::itemClicked,this,&PageSub::subListWidget_clicked);
+}
+
+SubData *PageSub::getSubData(QString name)
+{
+    auto it = map.find(name);
+    if (it == map.end())
+        return nullptr;
+    return it.value();
 }
 
 void PageSub::keyTreeView_clicked(const QModelIndex &index)
 {
+    SubTreeModel *treeModelNow = (SubTreeModel *) ui->keyTreeView->model();
+    if (treeModelNow == nullptr)
+        return;
     QString path = treeModelNow->getPath(index);
     ui->selectKey->setText(path);
+    QString name = treeModelNow->getName();
+    SubData *subData = getSubData(name);
+    if (subData == nullptr)
+        return;
+    SubTableModel *tableModel = subData->getTableModel(path);
+    ui->valueTableView->setModel(tableModel);
+    ui->valueTableView->setRootIndex(QModelIndex());
+}
+
+void PageSub::subListWidget_clicked(QListWidgetItem *item)
+{
+    QString name = item->text();
+    SubData *data = map[name];
+    ui->selectKeyExpr->setText(data->getKeyExpr());
+
+    ui->keyTreeView->setModel(data->getTreeModel());
+    ui->keyTreeView->setRootIndex(QModelIndex());
+
+    ui->valueTableView->setModel(nullptr);
+}
+
+void PageSub::newSubMsg(QString name, const QSharedPointer<ZSample> sample)
+{
+    qDebug()<<"newSubMsg name: "<< name <<",  key: "<<sample->getKey();
+    auto it = map.find(name);
+    if (it == map.end())
+        return;
+    SubData *data = it.value();
+    data->updateTreeModel(sample->getKey());
+    data->updateTableModel(sample);
+}
+
+QListWidgetItem *create_subListWidget_item(QString name)
+{
+    auto item = new QListWidgetItem();
+    item->setText(name);
+    auto font = QFont();
+    font.setPixelSize(16);
+    item->setFont(font);
+    item->setFlags(
+        Qt::ItemIsSelectable | Qt::ItemIsEditable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled
+            | Qt::ItemNeverHasChildren
+    );
+    return item;
+}
+
+void PageSub::newSubscriberResult(QZSubscriber *subscriber)
+{
+    if (subscriber == nullptr) {
+        QMessageBox msgBox;
+        msgBox.setText(tr("注册新订阅失败"));
+        msgBox.exec();
+        return;
+    }
+    QString name = subscriber->getName();
+    QString keyExpr = subscriber->getKeyExpr();
+
+    auto *data = new SubData(name, keyExpr);
+    map.insert(name, data);
+    connect(subscriber, &QZSubscriber::newSubMsg, this, &PageSub::newSubMsg, Qt::ConnectionType::QueuedConnection);
+
+    ui->subListWidget->addItem(create_subListWidget_item(name));
+}
+
+void PageSub::delSubscriberResult(QString name)
+{
+
+}
+
+void PageSub::subAdd_clicked(bool checked)
+{
+    QString name;
+    QString keyExpr;
+    auto dialog = DialogAddSub(name, keyExpr, this);
+    int r = dialog.exec();
+    if (r == 0) {
+        // 检查 name 是否被注册
+        if (map.contains(name)) {
+            // 此名称已被使用
+            QMessageBox msgBox;
+            msgBox.setText(tr("name 已被使用! 请重新命名"));
+            msgBox.exec();
+            return;
+        }
+
+        emit newSubscriber(name, keyExpr);
+    }
+}
+
+void PageSub::subDel_clicked(bool checked)
+{
 }
 
 SubTreeItem::SubTreeItem(QString key, bool isValue, SubTreeItem *parentItem)
@@ -158,9 +231,9 @@ QString SubTreeItem::getKey()
     return key;
 }
 
-SubTreeModel::SubTreeModel(QObject *parent)
+SubTreeModel::SubTreeModel(QString name, QObject *parent)
     :
-    QAbstractItemModel(parent)
+    QAbstractItemModel(parent), name(name)
 {
     rootItem = new SubTreeItem("", false);
 }
@@ -297,6 +370,11 @@ QString SubTreeModel::getPath(const QModelIndex &index)
     return queue.join(u'/');
 }
 
+QString SubTreeModel::getName() const
+{
+    return name;
+}
+
 SubDataItem::SubDataItem(ZSample &sample)
     :
     timestamp(sample.timestamp), encoding(sample.encoding), payload(std::move(sample.payload))
@@ -306,27 +384,27 @@ SubDataItem::SubDataItem(ZSample &sample)
 
 SubDataItem::SubDataItem(int i)
 {
-    payload =  QString::number(i).toUtf8();
+    payload = QString::number(i).toUtf8();
     timeNow = std::chrono::system_clock::now();
     encoding = Z_ENCODING_PREFIX_APP_INTEGER;
-    timestamp = ZTimestamp(1000,123);
+    timestamp = ZTimestamp(1000, 123);
 }
 
 SubDataItem::SubDataItem(double f)
 {
-    payload =  QString::number(f).toUtf8();
+    payload = QString::number(f).toUtf8();
     timeNow = std::chrono::system_clock::now();
     encoding = Z_ENCODING_PREFIX_APP_FLOAT;
-    timestamp = ZTimestamp(2000,321);
+    timestamp = ZTimestamp(2000, 321);
 
 }
 
 SubDataItem::SubDataItem(QString s)
 {
-    payload =  s.toUtf8();
+    payload = s.toUtf8();
     timeNow = std::chrono::system_clock::now();
     encoding = Z_ENCODING_PREFIX_TEXT_PLAIN;
-    timestamp = ZTimestamp(3000,567);
+    timestamp = ZTimestamp(3000, 567);
 }
 
 QVariant SubDataItem::get(int index) const
@@ -427,7 +505,6 @@ QVariant SubDataItem::timeNowToV() const
     return {datetime};
 }
 
-
 SubTableModel::SubTableModel(QObject *parent)
     : QAbstractTableModel(parent)
 {}
@@ -489,9 +566,8 @@ void SubTableModel::addData(SubDataItem *data)
 
 SubData::SubData(QString name, QString keyExpr)
     :
-    name(std::move(name)), keyExpr(std::move(keyExpr))
+    name(name), keyExpr(std::move(keyExpr)), treeModel(new SubTreeModel(name))
 {
-
 }
 
 QString SubData::getName()
@@ -502,4 +578,40 @@ QString SubData::getName()
 QString SubData::getKeyExpr()
 {
     return keyExpr;
+}
+
+SubTreeModel *SubData::getTreeModel()
+{
+    return treeModel;
+}
+
+SubTableModel *SubData::getTableModel(QString key)
+{
+    auto it = map.find(key);
+    if (it == map.end())
+        return nullptr;
+    else
+        return it.value();
+}
+
+void SubData::updateTreeModel(QString key)
+{
+    treeModel->addNewValueKey(key);
+}
+
+void SubData::updateTableModel(const QSharedPointer<ZSample> sample)
+{
+    QString key = sample->getKey();
+    auto it = map.find(key);
+    SubTableModel *model;
+    if (it == map.end()) {
+        model = new SubTableModel();
+        map.insert(key, model);
+    }
+    else {
+        model = it.value();
+    }
+
+    auto data = new SubDataItem(*sample);
+    model->addData(data);
 }

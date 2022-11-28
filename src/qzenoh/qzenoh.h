@@ -26,7 +26,7 @@ public:
     QString format() const;
 
 private:
-    uint64_t time;
+    uint64_t time = 0;
     QByteArray id;
 };
 
@@ -52,6 +52,8 @@ public:
     explicit ZSample(const z_sample_t *sample);
     ~ZSample() = default;
 
+    QString getKey() const;
+
 private:
     QString key;
     ZTimestamp timestamp;
@@ -68,16 +70,18 @@ public:
     ~QZSubscriber() override;
 
     void setOptions(z_reliability_t opt);
+    QString getName();
+    QString getKeyExpr();
 
 signals:
-    void newSubMsg(const QSharedPointer<ZSample> sample);
+    void newSubMsg(QString name, const QSharedPointer<ZSample> sample);
 
 private:
     static void callbackCall(const z_sample_t *sample, void *context);
 
 private:
     QString name;
-    QString key;
+    QString keyExpr;
     z_subscriber_options_t *opts;
     z_owned_subscriber_t *subscriber = nullptr;
     friend class QZenoh;
@@ -93,6 +97,8 @@ public:
     // 返回 true 说明open成功
     bool checkOpen();
 
+    bool close();
+
     // 增加一个订阅
     // sub 的内存管理转移给 QZenoh, 不要在调用此函数后释放 subscriber
     bool declareSubscriber(QZSubscriber *subscriber);
@@ -102,5 +108,6 @@ public:
 
 private:
     z_owned_session_t *zSession = nullptr;
+    // name
     QMap<QString, QZSubscriber *> mapSub;
 };
