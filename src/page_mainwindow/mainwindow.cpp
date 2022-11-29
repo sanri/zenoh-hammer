@@ -11,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     connect_signals_slots();
+    enableTabPage(true);
 }
 
 MainWindow::~MainWindow()

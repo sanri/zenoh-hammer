@@ -43,18 +43,7 @@
         <enum>QLayout::SetMinimumSize</enum>
        </property>
        <item>
-        <widget class="QListWidget" name="putListWidget">
-         <item>
-          <property name="text">
-           <string notr="true">put1</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string notr="true">put2</string>
-          </property>
-         </item>
-        </widget>
+        <widget class="QListWidget" name="putListWidget"/>
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
@@ -119,7 +108,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="">
+     <widget class="QWidget" name="layoutWidget">
       <layout class="QVBoxLayout" name="verticalLayout_5">
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -173,7 +162,38 @@ border-style: none
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="comboBox"/>
+            <widget class="QComboBox" name="encodingOption">
+             <property name="font">
+              <font>
+               <pointsize>14</pointsize>
+              </font>
+             </property>
+             <item>
+              <property name="text">
+               <string notr="true">text_plain</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">text_json</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">app_json</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">app_integer</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">app_float</string>
+              </property>
+             </item>
+            </widget>
            </item>
           </layout>
          </item>
@@ -210,7 +230,18 @@ border-style: none
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="comboBox_2"/>
+            <widget class="QComboBox" name="congestionControlOption">
+             <item>
+              <property name="text">
+               <string notr="true">block</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">drop</string>
+              </property>
+             </item>
+            </widget>
            </item>
           </layout>
          </item>
@@ -247,7 +278,43 @@ border-style: none
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="comboBox_3"/>
+            <widget class="QComboBox" name="priorityOption">
+             <item>
+              <property name="text">
+               <string notr="true">real_time</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">interactive_high</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">interactive_low</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">data_high</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">data</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">data_low</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string notr="true">background</string>
+              </property>
+             </item>
+            </widget>
            </item>
           </layout>
          </item>
@@ -255,8 +322,89 @@ border-style: none
        </item>
        <item>
         <widget class="QStackedWidget" name="stackedWidget">
-         <widget class="QWidget" name="page"/>
-         <widget class="QWidget" name="page_2"/>
+         <widget class="QWidget" name="page_text_plain">
+          <widget class="QTextEdit" name="textEdit">
+           <property name="geometry">
+            <rect>
+             <x>20</x>
+             <y>50</y>
+             <width>381</width>
+             <height>141</height>
+            </rect>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label">
+           <property name="geometry">
+            <rect>
+             <x>30</x>
+             <y>20</y>
+             <width>81</width>
+             <height>16</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>text_plain</string>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QWidget" name="page_number">
+          <widget class="QLineEdit" name="input_number">
+           <property name="geometry">
+            <rect>
+             <x>60</x>
+             <y>60</y>
+             <width>221</width>
+             <height>51</height>
+            </rect>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>16</pointsize>
+            </font>
+           </property>
+           <property name="text">
+            <string notr="true"/>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_3">
+           <property name="geometry">
+            <rect>
+             <x>50</x>
+             <y>10</y>
+             <width>58</width>
+             <height>16</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>number</string>
+           </property>
+          </widget>
+         </widget>
+         <widget class="QWidget" name="page_json">
+          <widget class="QTextEdit" name="textEdit_2">
+           <property name="geometry">
+            <rect>
+             <x>30</x>
+             <y>50</y>
+             <width>341</width>
+             <height>141</height>
+            </rect>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label_2">
+           <property name="geometry">
+            <rect>
+             <x>30</x>
+             <y>20</y>
+             <width>58</width>
+             <height>16</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>json</string>
+           </property>
+          </widget>
+         </widget>
         </widget>
        </item>
        <item>
