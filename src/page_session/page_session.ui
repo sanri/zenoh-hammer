@@ -387,21 +387,7 @@ border-style: none
                </layout>
               </item>
               <item>
-               <widget class="QListWidget" name="listenListWidget">
-                <item>
-                 <property name="text">
-                  <string notr="true">tcp/127.0.0.1:8000</string>
-                 </property>
-                 <property name="font">
-                  <font>
-                   <pointsize>16</pointsize>
-                  </font>
-                 </property>
-                 <property name="flags">
-                  <set>ItemIsSelectable|ItemIsEditable|ItemIsEnabled</set>
-                 </property>
-                </item>
-               </widget>
+               <widget class="QListWidget" name="listenListWidget"/>
               </item>
              </layout>
             </item>

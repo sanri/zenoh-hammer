@@ -95,7 +95,7 @@ QListWidgetItem *create_subListWidget_item(QString name)
     font.setPixelSize(16);
     item->setFont(font);
     item->setFlags(
-        Qt::ItemIsSelectable | Qt::ItemIsEditable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled
+        Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled
             | Qt::ItemNeverHasChildren
     );
     return item;
@@ -121,7 +121,25 @@ void PageSub::newSubscriberResult(QZSubscriber *subscriber)
 
 void PageSub::delSubscriberResult(QString name)
 {
+    SubData *subData = getSubData(name);
+    if (subData == nullptr)return;
 
+    SubTableModel* tableModel = subData->getTableModel(name);
+    SubTreeModel* treeModel = subData->getTreeModel();
+
+    if(ui->valueTableView->model() == tableModel){
+        ui->valueTableView->setModel(nullptr);
+    }
+    if(ui->keyTreeView->model() == treeModel){
+        ui->keyTreeView->setModel(nullptr);
+    }
+
+    delete subData;
+    map.remove(name);
+
+    auto row = ui->subListWidget->currentRow();
+    auto item = ui->subListWidget->takeItem(row);
+    ui->subListWidget->removeItemWidget(item);
 }
 
 void PageSub::subAdd_clicked(bool checked)
@@ -146,6 +164,9 @@ void PageSub::subAdd_clicked(bool checked)
 
 void PageSub::subDel_clicked(bool checked)
 {
+    auto item = ui->subListWidget->currentItem();
+    QString name = item->text();
+    emit delSubscriber(name);
 }
 
 SubTreeItem::SubTreeItem(QString key, bool isValue, SubTreeItem *parentItem)
@@ -174,7 +195,7 @@ SubTreeItem *SubTreeItem::child(int row)
 
 int SubTreeItem::childCount() const
 {
-    return children.count();
+    return (int) children.length();
 }
 
 int SubTreeItem::columnCount() const
@@ -343,8 +364,8 @@ bool SubTreeModel::addNewValueKey(QString &key)
             QModelIndex idx = (item == rootItem) ? QModelIndex() : createIndex(item->row(), 0, item);
 
             // 开始更新
-            beginInsertRows(idx, 0, item->childCount());
             item_new = new SubTreeItem(key_list[i], isValue, item);
+            beginInsertRows(idx, 0, item->childCount());
             item->appendChild(item_new);
             item->sortChildren();
             endInsertRows();
@@ -556,9 +577,9 @@ QVariant SubTableModel::headerData(int section, Qt::Orientation orientation, int
 
 void SubTableModel::addData(SubDataItem *data)
 {
-    int first_row = queue.count() - 1;
+    int first_row = (int)queue.length() - 1;
     if (first_row < 0) first_row = 0;
-    int last_row = queue.count();
+    int last_row = (int)queue.length();
     beginInsertRows(QModelIndex(), first_row, last_row);
     queue.push_back(data);
     endInsertRows();
@@ -568,6 +589,12 @@ SubData::SubData(QString name, QString keyExpr)
     :
     name(name), keyExpr(std::move(keyExpr)), treeModel(new SubTreeModel(name))
 {
+}
+
+SubData::~SubData()
+{
+    qDeleteAll(map);
+    delete treeModel;
 }
 
 QString SubData::getName()

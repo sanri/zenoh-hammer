@@ -130,7 +130,7 @@ class SubData
 {
 public:
     SubData(QString name, QString keyExpr);
-    ~SubData() = default;
+    ~SubData();
     QString getName();
     QString getKeyExpr();
     SubTreeModel *getTreeModel();

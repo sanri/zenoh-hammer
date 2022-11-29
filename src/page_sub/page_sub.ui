@@ -159,6 +159,9 @@
          </item>
          <item>
           <widget class="QPushButton" name="clear">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="maximumSize">
             <size>
              <width>60</width>
@@ -212,6 +215,9 @@
              </item>
              <item>
               <widget class="QSpinBox" name="bufferSizeSpinBox">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
                <property name="frame">
                 <bool>true</bool>
                </property>
