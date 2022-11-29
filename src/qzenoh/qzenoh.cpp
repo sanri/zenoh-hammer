@@ -108,7 +108,8 @@ bool ZConfig::setConnects(const QList<QString> &endpoints)
     struct z_config_t cfg = z_config_loan(&zConfig);
     const char *key = "connect/endpoints";
     QJsonDocument jd = QJsonDocument(QJsonArray::fromStringList(endpoints));
-    auto value = jd.toJson(QJsonDocument::JsonFormat::Compact).constData();
+    auto v = jd.toJson(QJsonDocument::JsonFormat::Compact);
+    auto value = v.constData();
     int8_t r = zc_config_insert_json(cfg, key, value);
     return (r == 0);
 }
@@ -118,7 +119,8 @@ bool ZConfig::setListens(const QList<QString> &endpoints)
     struct z_config_t cfg = z_config_loan(&zConfig);
     const char *key = "listen/endpoints";
     QJsonDocument jd = QJsonDocument(QJsonArray::fromStringList(endpoints));
-    auto value = jd.toJson(QJsonDocument::JsonFormat::Compact).constData();
+    auto v = jd.toJson(QJsonDocument::JsonFormat::Compact);
+    auto value = v.constData();
     int8_t r = zc_config_insert_json(cfg, key, value);
     return (r == 0);
 }

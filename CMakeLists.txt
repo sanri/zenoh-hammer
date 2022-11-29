@@ -68,8 +68,22 @@ endif()
 target_include_directories(zenoh-hammer PUBLIC ${ZENOHC_INCLUDE_PATH})
 target_link_directories(zenoh-hammer PUBLIC ${ZENOHC_LIB_PATH})
 
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+    set(SYSTEM_LIBS
+            Secur32
+            Crypt32
+            NtDll
+            ws2_32
+            Ncrypt
+            Iphlpapi
+            )
+else ()
+    set(SYSTEM_LIBS )
+endif()
+
 target_link_libraries(zenoh-hammer PRIVATE
         Qt${QT_VERSION_MAJOR}::Widgets
+        ${SYSTEM_LIBS}
         zenohc
         )
 
