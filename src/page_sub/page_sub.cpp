@@ -365,7 +365,9 @@ bool SubTreeModel::addNewValueKey(QString &key)
 
             // 开始更新
             item_new = new SubTreeItem(key_list[i], isValue, item);
-            beginInsertRows(idx, 0, item->childCount());
+            int end_row = item->childCount() - 1;
+            if (end_row < 0)end_row = 0;
+            beginInsertRows(idx, 0, end_row);
             item->appendChild(item_new);
             item->sortChildren();
             endInsertRows();
@@ -579,7 +581,7 @@ void SubTableModel::addData(SubDataItem *data)
 {
     int first_row = (int)queue.length() - 1;
     if (first_row < 0) first_row = 0;
-    int last_row = (int)queue.length();
+    int last_row = first_row;
     beginInsertRows(QModelIndex(), first_row, last_row);
     queue.push_back(data);
     endInsertRows();
