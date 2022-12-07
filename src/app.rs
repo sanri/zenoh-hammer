@@ -1,6 +1,11 @@
+use crate::page_get::PageGet;
+use crate::page_pub::PagePub;
+use crate::page_put::PagePut;
 use crate::page_session::PageSession;
+use crate::page_sub::PageSub;
+use eframe::emath::Align;
 use eframe::Frame;
-use egui::Context;
+use egui::{Context, Layout};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
@@ -8,15 +13,19 @@ use strum_macros::{AsRefStr, EnumIter};
 pub enum Page {
     Session,
     Sub,
-    Put,
     Get,
     Pub,
+    Put,
 }
 
 pub struct HammerApp {
     language_changed: bool,
     selected_page: Page,
     p_session: PageSession,
+    p_sub: PageSub,
+    p_get: PageGet,
+    p_pub: PagePub,
+    p_put: PagePut,
 }
 
 impl Default for HammerApp {
@@ -25,16 +34,16 @@ impl Default for HammerApp {
             language_changed: false,
             selected_page: Page::Session,
             p_session: PageSession::default(),
+            p_sub: PageSub::default(),
+            p_get: PageGet::default(),
+            p_pub: PagePub::default(),
+            p_put: PagePut::default(),
         }
     }
 }
 
 impl HammerApp {
     fn bar_contents(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
-        egui::widgets::global_dark_light_mode_switch(ui);
-
-        ui.separator();
-
         ui.menu_button("文件", |ui| {
             ui.set_min_width(80.0);
 
@@ -84,6 +93,10 @@ impl HammerApp {
         }
 
         ui.separator();
+
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            egui::widgets::global_dark_light_mode_switch(ui);
+        });
     }
 }
 
@@ -102,16 +115,16 @@ impl eframe::App for HammerApp {
                 self.p_session.show(ui);
             }
             Page::Sub => {
-                ui.label("page sub");
+                self.p_sub.show(ui);
             }
             Page::Put => {
-                ui.label("page put");
+                self.p_put.show(ui);
             }
             Page::Get => {
-                ui.label("page get");
+                self.p_get.show(ui);
             }
             Page::Pub => {
-                ui.label("page pub");
+                self.p_pub.show(ui);
             }
         });
     }

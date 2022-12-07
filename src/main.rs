@@ -5,6 +5,8 @@ mod page_pub;
 mod page_put;
 mod page_session;
 mod page_sub;
+mod zenoh;
+mod msg;
 
 use crate::{app::HammerApp, language::load_fonts};
 use eframe::{AppCreator, HardwareAcceleration, NativeOptions};
