@@ -1,9 +1,24 @@
+use std::collections::{BTreeMap, VecDeque};
 use eframe::wgpu::Label;
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText,
     ScrollArea, SelectableLabel, TextEdit,
 };
 use egui_extras::{Size, TableBuilder};
+use zenoh::{
+    prelude::{keyexpr, Value},
+    time::Timestamp,
+};
+
+pub struct DataSub{
+    deque:VecDeque<(Value,Option<Timestamp>)>
+}
+
+pub struct DataSubGroup {
+    id: u64,
+    key_expr: String,
+    map: BTreeMap<String, DataSub>, // key
+}
 
 pub struct PageSub {
     filtered: bool,

@@ -40,7 +40,9 @@ pub fn start_async(
     receiver_from_gui: Receiver<MsgGuiToZenoh>,
     config: Config,
 ) {
-    thread::spawn(move || task::block_on(loop_zenoh(sender_to_gui, receiver_from_gui, config)));
+    thread::spawn(move || {
+        task::block_on(loop_zenoh(sender_to_gui, receiver_from_gui, config));
+    });
 }
 
 async fn loop_zenoh(
@@ -67,7 +69,7 @@ async fn loop_zenoh(
             Err(e) => {
                 match e {
                     TryRecvError::Empty => {
-                        task::sleep(Duration::from_millis(16)).await;
+                        task::sleep(Duration::from_millis(8)).await;
                         continue 'a;
                     }
                     TryRecvError::Disconnected => {

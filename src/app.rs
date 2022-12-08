@@ -158,6 +158,7 @@ impl HammerApp {
                     }
                     TryRecvError::Disconnected => {
                         self.receiver_from_zenoh = None;
+                        self.p_session.connected = false;
                         return;
                     }
                 },
