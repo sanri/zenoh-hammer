@@ -1,23 +1,23 @@
-use std::collections::{BTreeMap, VecDeque};
 use eframe::wgpu::Label;
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText,
     ScrollArea, SelectableLabel, TextEdit,
 };
 use egui_extras::{Size, TableBuilder};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use zenoh::{
     prelude::{keyexpr, Value},
     time::Timestamp,
 };
 
-pub struct DataSub{
-    deque:VecDeque<(Value,Option<Timestamp>)>
+pub struct DataSubValue {
+    deque: VecDeque<(Value, Option<Timestamp>)>,
 }
 
-pub struct DataSubGroup {
-    id: u64,
+pub struct DataSubKeyGroup {
+    name: String,
     key_expr: String,
-    map: BTreeMap<String, DataSub>, // key
+    map: BTreeSet<String>, // key
 }
 
 pub struct PageSub {
@@ -26,16 +26,37 @@ pub struct PageSub {
     window_tree_height: f32,
     buffer_size_tmp: u32,
     buffer_size: u32,
+    selected_sub_id: u64,
+    show_selected_key_expr: String,
+    selected_key: String,
+    key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
+    key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
 }
 
 impl Default for PageSub {
     fn default() -> Self {
+        let mut bm = BTreeMap::new();
+        for i in 1..=40 {
+            bm.insert(
+                i,
+                DataSubKeyGroup {
+                    name: format!("sub_{}", i),
+                    key_expr: format!("demo/example{}/**", i),
+                    map: Default::default(),
+                },
+            );
+        }
         PageSub {
             filtered: false,
             filter_str: String::new(),
             window_tree_height: 400.0,
             buffer_size_tmp: 100,
             buffer_size: 100,
+            selected_sub_id: 0,
+            show_selected_key_expr: String::new(),
+            selected_key: String::new(),
+            key_group: bm,
+            key_value: BTreeMap::new(),
         }
     }
 }
@@ -60,11 +81,7 @@ impl PageSub {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.label("key expr:");
-                    ui.label(RichText::new("demo/example/**").monospace());
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("清理").clicked() {}
-                    });
+                    ui.label(RichText::new(self.show_selected_key_expr.as_str()).monospace());
                 });
 
                 ui.separator();
@@ -100,7 +117,7 @@ impl PageSub {
                             ui.label("key:");
                             ui.label(RichText::new("demo/example/test1").monospace());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button("清理").clicked() {}
+                                if ui.button("清理缓存数据").clicked() {}
                             });
                         });
 
@@ -124,14 +141,21 @@ impl PageSub {
     }
 
     fn show_subscribers(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .button(RichText::new("hello--------").monospace())
-            .clicked()
-        {}
-        if ui
-            .button(RichText::new("world--------").monospace())
-            .clicked()
-        {}
+        ScrollArea::both()
+            .max_width(100.0)
+            .auto_shrink([true, false])
+            .show(ui, |ui| {
+                for (i, d) in &self.key_group {
+                    let text = RichText::new(d.name.clone()).monospace();
+                    if ui
+                        .selectable_label((*i) == self.selected_sub_id, text)
+                        .clicked()
+                    {
+                        self.selected_sub_id = *i;
+                        self.show_selected_key_expr = d.key_expr.clone();
+                    }
+                }
+            });
     }
 
     fn show_key_tree(&mut self, ui: &mut egui::Ui) {

@@ -50,8 +50,8 @@ impl Default for HammerApp {
 impl eframe::App for HammerApp {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.processing_zenoh_msg();
-        self.show_ui(ctx, frame);
         self.processing_page_session_events();
+        self.show_ui(ctx, frame);
     }
 }
 
