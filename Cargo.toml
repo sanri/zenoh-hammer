@@ -10,8 +10,10 @@ egui = { version = "0.19" }
 egui_extras = { version = "0.19" }
 eframe = { version = "0.19.0", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 tracing-subscriber = "0.3"
-zenoh = { git = "https://github.com/sanri/zenoh.git"}
+zenoh = { git = "https://github.com/sanri/zenoh.git", features = [ "unstable" ] }
 async-std = { version = "1.12", default-features = false, features = [ "std" ] }
+futures = "0.3"
+flume = "0.10"
 strum = "0.24"
 strum_macros = "0.24"
 serde = "1.0"

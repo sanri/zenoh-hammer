@@ -1,11 +1,12 @@
 use crate::page_get::PageGet;
 use crate::page_pub::PagePub;
 use crate::page_put::PagePut;
-use crate::page_session::PageSession;
+use crate::page_session::{Event, PageSession};
 use crate::page_sub::PageSub;
-use eframe::emath::Align;
-use eframe::Frame;
+use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
+use eframe::{emath::Align, Frame};
 use egui::{Context, Layout};
+use flume::{unbounded, TryRecvError};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
@@ -20,6 +21,8 @@ pub enum Page {
 
 pub struct HammerApp {
     language_changed: bool,
+    sender_to_zenoh: Option<Sender<MsgGuiToZenoh>>,
+    receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
     selected_page: Page,
     p_session: PageSession,
     p_sub: PageSub,
@@ -32,6 +35,8 @@ impl Default for HammerApp {
     fn default() -> Self {
         HammerApp {
             language_changed: false,
+            sender_to_zenoh: None,
+            receiver_from_zenoh: None,
             selected_page: Page::Session,
             p_session: PageSession::default(),
             p_sub: PageSub::default(),
@@ -42,8 +47,44 @@ impl Default for HammerApp {
     }
 }
 
+impl eframe::App for HammerApp {
+    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+        self.processing_zenoh_msg();
+        self.show_ui(ctx, frame);
+        self.processing_page_session_events();
+    }
+}
+
 impl HammerApp {
-    fn bar_contents(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
+    fn show_ui(&mut self, ctx: &Context, frame: &mut Frame) {
+        ctx.set_pixels_per_point(3.0);
+
+        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                self.show_bar_contents(ui, frame);
+            });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| match self.selected_page {
+            Page::Session => {
+                self.p_session.show(ui);
+            }
+            Page::Sub => {
+                self.p_sub.show(ui);
+            }
+            Page::Put => {
+                self.p_put.show(ui);
+            }
+            Page::Get => {
+                self.p_get.show(ui);
+            }
+            Page::Pub => {
+                self.p_pub.show(ui);
+            }
+        });
+    }
+
+    fn show_bar_contents(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
         ui.menu_button("文件", |ui| {
             ui.set_min_width(80.0);
 
@@ -98,34 +139,76 @@ impl HammerApp {
             egui::widgets::global_dark_light_mode_switch(ui);
         });
     }
-}
 
-impl eframe::App for HammerApp {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
-        ctx.set_pixels_per_point(3.0);
+    fn processing_zenoh_msg(&mut self) {
+        let receiver: &Receiver<MsgZenohToGui> = match &self.receiver_from_zenoh {
+            None => {
+                return;
+            }
+            Some(s) => s,
+        };
 
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                self.bar_contents(ui, frame);
-            });
-        });
+        loop {
+            let r = receiver.try_recv();
+            let msg = match r {
+                Ok(m) => m,
+                Err(e) => match e {
+                    TryRecvError::Empty => {
+                        return;
+                    }
+                    TryRecvError::Disconnected => {
+                        self.receiver_from_zenoh = None;
+                        return;
+                    }
+                },
+            };
+            match msg {
+                MsgZenohToGui::OpenSession(b) => {
+                    self.p_session.connected = b;
+                    if b == false {
+                        self.sender_to_zenoh = None;
+                        return;
+                    }
+                }
+                MsgZenohToGui::AddSubRes(_) => {}
+                MsgZenohToGui::DelSubRes(_) => {}
+                MsgZenohToGui::SubCB(_) => {}
+                MsgZenohToGui::GetRes(_) => {}
+                MsgZenohToGui::AddPubRes => {}
+                MsgZenohToGui::DelPubRes => {}
+                MsgZenohToGui::PubRes => {}
+                MsgZenohToGui::PutRes => {}
+            }
+        }
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| match self.selected_page {
-            Page::Session => {
-                self.p_session.show(ui);
+    fn processing_page_session_events(&mut self) {
+        while let Some(event) = self.p_session.events.pop_front() {
+            match event {
+                Event::Connect(c) => {
+                    if self.sender_to_zenoh.is_none() {
+                        let (sender_to_gui, receiver_from_zenoh): (
+                            Sender<MsgZenohToGui>,
+                            Receiver<MsgZenohToGui>,
+                        ) = unbounded();
+                        let (sender_to_zenoh, receiver_from_gui): (
+                            Sender<MsgGuiToZenoh>,
+                            Receiver<MsgGuiToZenoh>,
+                        ) = unbounded();
+
+                        crate::zenoh::start_async(sender_to_gui, receiver_from_gui, *c);
+
+                        self.sender_to_zenoh = Some(sender_to_zenoh);
+                        self.receiver_from_zenoh = Some(receiver_from_zenoh);
+                    }
+                }
+                Event::Disconnect => {
+                    if let Some(sender) = &self.sender_to_zenoh {
+                        let _ = sender.send(MsgGuiToZenoh::Close);
+                        self.sender_to_zenoh = None;
+                    }
+                }
             }
-            Page::Sub => {
-                self.p_sub.show(ui);
-            }
-            Page::Put => {
-                self.p_put.show(ui);
-            }
-            Page::Get => {
-                self.p_get.show(ui);
-            }
-            Page::Pub => {
-                self.p_pub.show(ui);
-            }
-        });
+        }
     }
 }

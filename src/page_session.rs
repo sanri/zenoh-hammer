@@ -1,11 +1,18 @@
 use egui::{Align, Layout, ScrollArea};
 use serde_json;
+use std::collections::VecDeque;
 use zenoh::config::{Config, WhatAmI};
 
+pub enum Event {
+    Connect(Box<Config>),
+    Disconnect,
+}
+
 pub struct PageSession {
+    pub events: VecDeque<Event>,
     zenoh_config: Config,
     config_json: String,
-    connected: bool,
+    pub connected: bool,
 }
 
 impl Default for PageSession {
@@ -13,6 +20,7 @@ impl Default for PageSession {
         let config = Config::default();
         let json: serde_json::Value = serde_json::to_value(&config).unwrap();
         PageSession {
+            events: VecDeque::new(),
             zenoh_config: config,
             config_json: format!("{:#}", json),
             connected: false,
@@ -26,11 +34,12 @@ impl PageSession {
             ui.vertical(|ui| {
                 if self.connected {
                     if ui.button("断开连接").clicked() {
-                        self.connected = false;
+                        self.events.push_back(Event::Disconnect);
                     }
                 } else {
                     if ui.button("建立连接").clicked() {
-                        self.connected = true;
+                        self.events
+                            .push_back(Event::Connect(Box::new(self.zenoh_config.clone())));
                     }
                 }
 
