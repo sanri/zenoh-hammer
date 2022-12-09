@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-egui = { version = "0.19" }
-egui_extras = { version = "0.19" }
-eframe = { version = "0.19.0", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
+egui = { version = "0.20" }
+egui_extras = { version = "0.20" }
+eframe = { version = "0.20", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 tracing-subscriber = "0.3"
 zenoh = { git = "https://github.com/sanri/zenoh.git", features = [ "unstable" ] }
 async-std = { version = "=1.12", default-features = false }

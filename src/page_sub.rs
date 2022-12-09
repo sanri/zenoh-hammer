@@ -1,10 +1,8 @@
 use eframe::wgpu::Label;
-use egui::{
-    vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText,
-    ScrollArea, SelectableLabel, TextEdit,
-};
-use egui_extras::{Size, TableBuilder};
+use egui::{vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText, ScrollArea, SelectableLabel, TextEdit, Ui};
+use egui_extras::{Column, Size, TableBuilder};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ops::Index;
 use zenoh::{
     prelude::{keyexpr, Value},
     time::Timestamp,
@@ -36,7 +34,7 @@ pub struct PageSub {
 impl Default for PageSub {
     fn default() -> Self {
         let mut bm = BTreeMap::new();
-        for i in 1..=40 {
+        for i in 1..=20 {
             bm.insert(
                 i,
                 DataSubKeyGroup {
@@ -90,27 +88,28 @@ impl PageSub {
 
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        Resize::default()
-                            .default_width(200.0)
-                            .default_height(self.window_tree_height)
+                        ScrollArea::both()
+                            .id_source("scroll_area_tree")
+                            .max_width(200.0)
+                            .min_scrolled_width(200.0)
+                            .min_scrolled_height(self.window_tree_height)
+                            .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                ScrollArea::both()
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.checkbox(&mut self.filtered, "过滤");
-                                            let te = TextEdit::singleline(&mut self.filter_str)
-                                                .code_editor()
-                                                .interactive(self.filtered);
-                                            if ui.add(te).changed() {
-                                                println!("text edit changed: {}", self.filter_str);
-                                            }
-                                        });
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut self.filtered, "过滤");
+                                    let te = TextEdit::singleline(&mut self.filter_str)
+                                        .code_editor()
+                                        .interactive(self.filtered);
+                                    if ui.add(te).changed() {
+                                        println!("text edit changed: {}", self.filter_str);
+                                    }
+                                });
 
-                                        self.show_key_tree(ui);
-                                    });
+                                self.show_key_tree(ui);
                             });
                     });
+
+                    ui.separator();
 
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
@@ -133,7 +132,11 @@ impl PageSub {
                             }
                         });
 
-                        self.show_value_table(ui);
+                        ScrollArea::horizontal()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                self.show_value_table(ui);
+                            });
                     });
                 });
             });
@@ -164,14 +167,9 @@ impl PageSub {
             .show(ui, |ui| {
                 let b = SelectableLabel::new(false, "heard11");
                 ui.add(b);
-                CollapsingHeader::new("heard11")
+                CollapsingHeader::new("heard111")
                     .default_open(false)
-                    .show(ui, |ui| {
-                        let b = SelectableLabel::new(true, "我的");
-                        if ui.add(b).clicked() {
-                            println!("我的");
-                        }
-                    });
+                    .show(ui, |ui| {});
             });
 
         let _ = CollapsingHeader::new("header2")
@@ -187,9 +185,9 @@ impl PageSub {
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
-            .column(Size::initial(60.0).at_least(40.0))
-            .column(Size::initial(60.0).at_least(40.0))
-            .column(Size::remainder().at_least(60.0))
+            .column(Column::initial(40.0).at_least(40.0))
+            .column(Column::auto())
+            .column(Column::remainder())
             .resizable(true);
 
         table
@@ -235,4 +233,196 @@ impl PageSub {
                 }
             });
     }
+}
+
+struct TreeNode {
+    name: String,
+    index_own: u32,
+    index_parent: u32,                     // 当为顶级节点时，此值为 u32::MAX
+    index_children: BTreeMap<String, u32>, // <child name, child index>, 若没有子节点，此数组为空
+    key: Option<String>,                   // 当为叶节点时，存储完整key值
+}
+
+impl TreeNode {
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+
+    fn set_parent(&mut self, index: u32) {
+        self.index_parent = index;
+    }
+
+    fn set_key(&mut self, key: &str) {
+        self.key = Some(key.to_string());
+    }
+
+    fn create_children_ui_fn(&self,tree:&Tree)->impl FnOnce(&mut Ui){
+        |ui|{
+
+        }
+    }
+}
+
+#[derive(Default)]
+struct Tree {
+    index_top_node: BTreeMap<String, u32>, // <top node name, node index>,
+    mem: Vec<TreeNode>,
+}
+
+impl Tree {
+    pub fn new(key_list:Vec<String>) -> Tree {
+        let mut tree = Tree::default();
+        for key in &key_list {
+            tree.add_node(key);
+        }
+        tree
+    }
+
+    fn new_node(&mut self) -> &mut TreeNode {
+        let index = self.mem.len();
+        self.mem.push(TreeNode {
+            name: String::new(),
+            index_own: index as u32,
+            index_parent: u32::MAX,
+            index_children: BTreeMap::new(),
+            key: None,
+        });
+        self.mem.last_mut().unwrap()
+    }
+
+    fn add_node(&mut self, key: &str) {
+        let mut index_now = u32::MAX;
+        let mut split = key.split('/');
+        if let Some(name) = split.next() {
+            if let Some(index) = self.index_top_node.get(name) {
+                index_now = *index;
+            } else {
+                let node = self.new_node();
+                node.set_name(name);
+                index_now = node.index_own;
+                self.index_top_node.insert(name.to_string(), index_now);
+            }
+        } else {
+            return;
+        }
+        'a: loop {
+            if let Some(name) = split.next() {
+                {
+                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                    if let Some(index) = parent.index_children.get(name) {
+                        index_now = *index;
+                        continue 'a;
+                    }
+                }
+                let mut index_child: u32 = u32::MAX;
+                {
+                    let node = self.new_node();
+                    node.set_name(name);
+                    node.set_parent(index_now);
+                    index_child = node.index_own;
+                }
+                {
+                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                    parent.index_children.insert(name.to_string(), index_child);
+                    index_now = index_child;
+                }
+            } else {
+                let nd: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                nd.set_key(key);
+                break 'a;
+            }
+        }
+    }
+}
+
+#[test]
+fn tree_add_node() {
+    let mut tree = Tree::default();
+    tree.add_node("demo1");
+    assert_eq!(tree.index_top_node.len(), 1);
+    assert_eq!(*(tree.index_top_node.get("demo1").unwrap()), 0);
+    assert_eq!(tree.mem.len(), 1);
+    assert_eq!(tree.mem.first().unwrap().name, "demo1".to_string());
+    assert_eq!(tree.mem.first().unwrap().key, Some("demo1".to_string()));
+
+    tree.add_node("demo1/example1");
+    assert_eq!(tree.index_top_node.len(), 1);
+    assert_eq!(tree.mem.len(), 2);
+    assert_eq!(tree.mem.get(1).unwrap().name, "example1".to_string());
+    assert_eq!(
+        tree.mem.get(1).unwrap().key,
+        Some("demo1/example1".to_string())
+    );
+    assert_eq!(tree.mem.get(0).unwrap().index_children.len(), 1);
+    assert_eq!(
+        *(tree
+            .mem
+            .get(0)
+            .unwrap()
+            .index_children
+            .get("example1")
+            .unwrap()),
+        1
+    );
+
+    tree.add_node("demo1/example1");
+    assert_eq!(tree.index_top_node.len(), 1);
+    assert_eq!(tree.mem.len(), 2);
+    assert_eq!(tree.mem.get(1).unwrap().name, "example1".to_string());
+    assert_eq!(
+        tree.mem.get(1).unwrap().key,
+        Some("demo1/example1".to_string())
+    );
+
+    tree.add_node("demo1/example2");
+    assert_eq!(tree.index_top_node.len(), 1);
+    assert_eq!(tree.mem.len(), 3);
+    assert_eq!(tree.mem.get(2).unwrap().name, "example2".to_string());
+    assert_eq!(
+        tree.mem.get(2).unwrap().key,
+        Some("demo1/example2".to_string())
+    );
+    assert_eq!(tree.mem.get(0).unwrap().index_children.len(), 2);
+    assert_eq!(
+        *(tree
+            .mem
+            .get(0)
+            .unwrap()
+            .index_children
+            .get("example1")
+            .unwrap()),
+        1
+    );
+    assert_eq!(
+        *(tree
+            .mem
+            .get(0)
+            .unwrap()
+            .index_children
+            .get("example2")
+            .unwrap()),
+        2
+    );
+
+    tree.add_node("demo2/example1");
+    assert_eq!(tree.index_top_node.len(), 2);
+    assert_eq!(tree.mem.len(), 5);
+    assert_eq!(tree.mem.get(3).unwrap().name, "demo2".to_string());
+    assert_eq!(tree.mem.get(3).unwrap().key, None);
+    assert_eq!(tree.mem.get(3).unwrap().index_children.len(), 1);
+    assert_eq!(
+        *(tree
+            .mem
+            .get(3)
+            .unwrap()
+            .index_children
+            .get("example1")
+            .unwrap()),
+        4
+    );
+    assert_eq!(tree.mem.get(4).unwrap().name, "example1".to_string());
+    assert_eq!(
+        tree.mem.get(4).unwrap().key,
+        Some("demo2/example1".to_string())
+    );
 }
