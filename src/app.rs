@@ -2,7 +2,7 @@ use crate::page_get::PageGet;
 use crate::page_pub::PagePub;
 use crate::page_put::PagePut;
 use crate::page_session::PageSession;
-use crate::page_sub::{DataSubKeyGroup, PageSub};
+use crate::page_sub::{DataSubKeyGroup, DataSubValue, PageSub};
 use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
 use crate::{page_session, page_sub};
 use eframe::{emath::Align, Frame};
@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 use zenoh::prelude::KeyExpr;
+use zenoh::sample::Sample;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, AsRefStr, EnumIter)]
 pub enum Page {
@@ -178,11 +179,41 @@ impl HammerApp {
                 }
                 MsgZenohToGui::AddSubRes(_) => {}
                 MsgZenohToGui::DelSubRes(id) => {
-                    let _ = self.p_sub.key_group.remove(&id);
+                    let mut key_set: BTreeSet<String> = BTreeSet::new();
+                    if let Some(d) = self.p_sub.key_group.remove(&id) {
+                        key_set = d.map;
+                    } else {
+                        continue;
+                    }
+                    let mut all_key_set: BTreeSet<String> = BTreeSet::new();
+                    for (_, data) in &self.p_sub.key_group {
+                        for key in &data.map {
+                            let _ = all_key_set.insert(key.clone());
+                        }
+                    }
+                    let remove_key_list: Vec<String> =
+                        key_set.difference(&all_key_set).cloned().collect();
+                    for remove_key in remove_key_list {
+                        let _ = self.p_sub.key_value.remove(remove_key.as_str());
+                    }
                 }
-                MsgZenohToGui::SubCB(data) => {
-                    let data = *data;
-                    println!("收到消息, id: {}",data.0);
+                MsgZenohToGui::SubCB(d) => {
+                    let (id, data): (u64, Sample) = *d;
+                    let key = data.key_expr.as_str();
+
+                    if let Some(skg) = self.p_sub.key_group.get_mut(&id) {
+                        if skg.map.insert(key.to_string()) {
+                            self.p_sub.new_sub_key_flag = true;
+                        }
+                    }
+                    if let Some(sv) = self.p_sub.key_value.get_mut(key) {
+                        sv.deque.push_back((data.value, data.timestamp));
+                    } else {
+                        println!("new key: {}", key);
+                        let mut sv = DataSubValue::default();
+                        sv.deque.push_back((data.value, data.timestamp));
+                        self.p_sub.key_value.insert(key.to_string(), sv);
+                    }
                 }
                 MsgZenohToGui::GetRes(_) => {}
                 MsgZenohToGui::AddPubRes => {}

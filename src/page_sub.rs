@@ -17,6 +17,7 @@ pub enum Event {
     DelSub(u64),                   // id
 }
 
+#[derive(Default)]
 pub struct DataSubValue {
     pub deque: VecDeque<(Value, Option<Timestamp>)>,
 }
@@ -38,6 +39,7 @@ pub struct AddSubWindow {
 
 pub struct PageSub {
     pub events: VecDeque<Event>,
+    pub new_sub_key_flag: bool,
     filtered: bool,
     filter_str: String,
     window_tree_height: f32,
@@ -70,12 +72,21 @@ impl Default for PageSub {
             key_group: BTreeMap::new(),
             key_value: BTreeMap::new(),
             key_tree: Tree::default(),
+            new_sub_key_flag: false,
         }
     }
 }
 
 impl PageSub {
     pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
+        if self.new_sub_key_flag {
+            self.new_sub_key_flag = false;
+            if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
+                self.key_list_before_filtration = skg.map.iter().cloned().collect();
+                self.filter_key_tree();
+            }
+        }
+
         ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -87,6 +98,8 @@ impl PageSub {
                         self.events.push_back(Event::DelSub(self.selected_sub_id));
                         self.selected_sub_id = 0;
                         self.show_selected_key_expr.clear();
+                        self.key_list_before_filtration.clear();
+                        self.filter_key_tree();
                     };
                 });
 
