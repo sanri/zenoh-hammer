@@ -1,6 +1,10 @@
 use eframe::wgpu::Label;
-use egui::{vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText, ScrollArea, SelectableLabel, TextEdit, Ui};
+use egui::{
+    vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText,
+    ScrollArea, SelectableLabel, TextEdit, Ui,
+};
 use egui_extras::{Column, Size, TableBuilder};
+use serde::de::Unexpected::Str;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ops::Index;
 use zenoh::{
@@ -25,8 +29,10 @@ pub struct PageSub {
     buffer_size_tmp: u32,
     buffer_size: u32,
     selected_sub_id: u64,
-    show_selected_key_expr: String,
     selected_key: String,
+    show_selected_key_expr: String,
+    key_list_before_filtration: Vec<String>,
+    key_tree: Tree,                            // tree be show
     key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
     key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
 }
@@ -35,12 +41,17 @@ impl Default for PageSub {
     fn default() -> Self {
         let mut bm = BTreeMap::new();
         for i in 1..=20 {
+            let skg_map: BTreeSet<String> = BTreeSet::from([
+                "demo/example/test1".to_string(),
+                "demo/example/test2".to_string(),
+            ]);
+
             bm.insert(
                 i,
                 DataSubKeyGroup {
                     name: format!("sub_{}", i),
                     key_expr: format!("demo/example{}/**", i),
-                    map: Default::default(),
+                    map: skg_map,
                 },
             );
         }
@@ -52,15 +63,17 @@ impl Default for PageSub {
             buffer_size: 100,
             selected_sub_id: 0,
             show_selected_key_expr: String::new(),
+            key_list_before_filtration: Vec::new(),
             selected_key: String::new(),
             key_group: bm,
             key_value: BTreeMap::new(),
+            key_tree: Tree::default(),
         }
     }
 }
 
 impl PageSub {
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ui: &mut Ui) {
         ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -96,13 +109,15 @@ impl PageSub {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.checkbox(&mut self.filtered, "过滤");
+                                    if ui.checkbox(&mut self.filtered, "过滤").changed() {
+                                        self.filter_key_tree();
+                                    }
                                     let te = TextEdit::singleline(&mut self.filter_str)
                                         .code_editor()
                                         .interactive(self.filtered);
                                     if ui.add(te).changed() {
-                                        println!("text edit changed: {}", self.filter_str);
-                                    }
+                                        self.filter_key_tree();
+                                    };
                                 });
 
                                 self.show_key_tree(ui);
@@ -114,7 +129,7 @@ impl PageSub {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label("key:");
-                            ui.label(RichText::new("demo/example/test1").monospace());
+                            ui.label(RichText::new(&self.selected_key).monospace());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui.button("清理缓存数据").clicked() {}
                             });
@@ -143,11 +158,12 @@ impl PageSub {
         });
     }
 
-    fn show_subscribers(&mut self, ui: &mut egui::Ui) {
+    fn show_subscribers(&mut self, ui: &mut Ui) {
         ScrollArea::both()
             .max_width(100.0)
             .auto_shrink([true, false])
             .show(ui, |ui| {
+                let mut clicked = false;
                 for (i, d) in &self.key_group {
                     let text = RichText::new(d.name.clone()).monospace();
                     if ui
@@ -156,32 +172,30 @@ impl PageSub {
                     {
                         self.selected_sub_id = *i;
                         self.show_selected_key_expr = d.key_expr.clone();
+                        self.key_list_before_filtration = d.map.iter().cloned().collect();
+                        clicked = true;
                     }
                 }
-            });
-    }
-
-    fn show_key_tree(&mut self, ui: &mut egui::Ui) {
-        let _ = CollapsingHeader::new("header1")
-            .default_open(false)
-            .show(ui, |ui| {
-                let b = SelectableLabel::new(false, "heard11");
-                ui.add(b);
-                CollapsingHeader::new("heard111")
-                    .default_open(false)
-                    .show(ui, |ui| {});
-            });
-
-        let _ = CollapsingHeader::new("header2")
-            .default_open(false)
-            .show(ui, |ui| {
-                if ui.button("你的").clicked() {
-                    println!("你的");
+                if clicked {
+                    self.filter_key_tree();
                 }
             });
     }
 
-    fn show_value_table(&mut self, ui: &mut egui::Ui) {
+    fn show_key_tree(&mut self, ui: &mut Ui) {
+        self.key_tree.show_ui(&mut self.selected_key, ui);
+    }
+
+    fn filter_key_tree(&mut self) {
+        if self.filtered {
+            let filtered = filter(&self.key_list_before_filtration, &self.filter_str);
+            self.key_tree = Tree::new(&filtered);
+        } else {
+            self.key_tree = Tree::new(&self.key_list_before_filtration);
+        }
+    }
+
+    fn show_value_table(&mut self, ui: &mut Ui) {
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
@@ -256,10 +270,27 @@ impl TreeNode {
         self.key = Some(key.to_string());
     }
 
-    fn create_children_ui_fn(&self,tree:&Tree)->impl FnOnce(&mut Ui){
-        |ui|{
-
+    fn show_ui<'a>(&'a self, tree: &'a Tree, selected_key: &'a mut String, ui: &'a mut Ui) {
+        let name = self.name.clone();
+        if let Some(k) = self.key.clone() {
+            if ui
+                .selectable_label(*selected_key == k, name.clone())
+                .clicked()
+            {
+                *selected_key = k;
+            }
         }
+        if self.index_children.is_empty() {
+            return;
+        }
+        CollapsingHeader::new(name)
+            .default_open(false)
+            .show(ui, |ui| {
+                for (_, index_child) in &self.index_children {
+                    let child: &TreeNode = tree.mem.get((*index_child) as usize).unwrap();
+                    child.show_ui(tree, selected_key, ui);
+                }
+            });
     }
 }
 
@@ -270,12 +301,19 @@ struct Tree {
 }
 
 impl Tree {
-    pub fn new(key_list:Vec<String>) -> Tree {
+    pub fn new(key_list: &Vec<String>) -> Tree {
         let mut tree = Tree::default();
-        for key in &key_list {
+        for key in key_list {
             tree.add_node(key);
         }
         tree
+    }
+
+    pub fn show_ui(&self, selected_key: &mut String, ui: &mut Ui) {
+        for (_, index_top) in &self.index_top_node {
+            let top_node: &TreeNode = self.mem.get((*index_top) as usize).unwrap();
+            top_node.show_ui(self, selected_key, ui);
+        }
     }
 
     fn new_node(&mut self) -> &mut TreeNode {
@@ -425,4 +463,15 @@ fn tree_add_node() {
         tree.mem.get(4).unwrap().key,
         Some("demo2/example1".to_string())
     );
+}
+
+fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in list {
+        if let Some(_) = s.find(filter_str) {
+            out.push(s.clone());
+        }
+    }
+
+    out
 }
