@@ -1,14 +1,17 @@
 use crate::page_get::PageGet;
 use crate::page_pub::PagePub;
 use crate::page_put::PagePut;
-use crate::page_session::{Event, PageSession};
-use crate::page_sub::PageSub;
+use crate::page_session::PageSession;
+use crate::page_sub::{DataSubKeyGroup, PageSub};
 use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
+use crate::{page_session, page_sub};
 use eframe::{emath::Align, Frame};
 use egui::{Context, Layout};
 use flume::{unbounded, TryRecvError};
+use std::collections::BTreeSet;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
+use zenoh::prelude::KeyExpr;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, AsRefStr, EnumIter)]
 pub enum Page {
@@ -51,7 +54,9 @@ impl eframe::App for HammerApp {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.processing_zenoh_msg();
         self.processing_page_session_events();
+        self.processing_page_sub_events();
         self.show_ui(ctx, frame);
+        ctx.request_repaint();
     }
 }
 
@@ -70,7 +75,7 @@ impl HammerApp {
                 self.p_session.show(ui);
             }
             Page::Sub => {
-                self.p_sub.show(ui);
+                self.p_sub.show(ctx, ui);
             }
             Page::Put => {
                 self.p_put.show(ui);
@@ -172,8 +177,13 @@ impl HammerApp {
                     }
                 }
                 MsgZenohToGui::AddSubRes(_) => {}
-                MsgZenohToGui::DelSubRes(_) => {}
-                MsgZenohToGui::SubCB(_) => {}
+                MsgZenohToGui::DelSubRes(id) => {
+                    let _ = self.p_sub.key_group.remove(&id);
+                }
+                MsgZenohToGui::SubCB(data) => {
+                    let data = *data;
+                    println!("收到消息, id: {}",data.0);
+                }
                 MsgZenohToGui::GetRes(_) => {}
                 MsgZenohToGui::AddPubRes => {}
                 MsgZenohToGui::DelPubRes => {}
@@ -186,7 +196,7 @@ impl HammerApp {
     fn processing_page_session_events(&mut self) {
         while let Some(event) = self.p_session.events.pop_front() {
             match event {
-                Event::Connect(c) => {
+                page_session::Event::Connect(c) => {
                     if self.sender_to_zenoh.is_none() {
                         let (sender_to_gui, receiver_from_zenoh): (
                             Sender<MsgZenohToGui>,
@@ -203,10 +213,31 @@ impl HammerApp {
                         self.receiver_from_zenoh = Some(receiver_from_zenoh);
                     }
                 }
-                Event::Disconnect => {
+                page_session::Event::Disconnect => {
                     if let Some(sender) = &self.sender_to_zenoh {
                         let _ = sender.send(MsgGuiToZenoh::Close);
                         self.sender_to_zenoh = None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn processing_page_sub_events(&mut self) {
+        while let Some(event) = self.p_sub.events.pop_front() {
+            match event {
+                page_sub::Event::AddSub(id, key_expr) => {
+                    if let Some(sender) = &self.sender_to_zenoh {
+                        let _ = sender.send(MsgGuiToZenoh::AddSubReq(Box::new((id, key_expr))));
+                    } else {
+                        let _ = self.p_sub.key_group.remove(&id);
+                    }
+                }
+                page_sub::Event::DelSub(id) => {
+                    if let Some(sender) = &self.sender_to_zenoh {
+                        let _ = sender.send(MsgGuiToZenoh::DelSubReq(id));
+                    } else {
+                        let _ = self.p_sub.key_group.remove(&id);
                     }
                 }
             }

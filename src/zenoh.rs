@@ -97,6 +97,9 @@ async fn loop_zenoh(
                 let _ = sender_to_gui.send(MsgZenohToGui::AddSubRes(id));
             }
             MsgGuiToZenoh::DelSubReq(id) => {
+                if let Some(sender) = subscriber_senders.get(&id) {
+                    let _ = sender.send(());
+                }
                 let _ = subscriber_senders.remove(&id);
                 let _ = sender_to_gui.send(MsgZenohToGui::DelSubRes(id));
             }
@@ -115,6 +118,7 @@ async fn task_subscriber(
     close_receiver: Receiver<()>,
     sender_to_gui: Sender<MsgZenohToGui>,
 ) {
+    println!("task_subscriber entry");
     'a: loop {
         select!(
             sample = subscriber.recv_async() =>{
@@ -127,10 +131,9 @@ async fn task_subscriber(
             },
 
             r = close_receiver.recv_async() =>{
-                if let Err(_) = r{
                     break 'a;
-                }
             },
         );
     }
+    println!("task_subscriber exit");
 }

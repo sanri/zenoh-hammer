@@ -1,28 +1,43 @@
 use eframe::wgpu::Label;
+use egui::epaint::RectShape;
 use egui::{
-    vec2, Align, Button, CollapsingHeader, Color32, DragValue, Layout, Resize, RichText,
-    ScrollArea, SelectableLabel, TextEdit, Ui,
+    vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Layout, Resize,
+    RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
 };
 use egui_extras::{Column, Size, TableBuilder};
-use serde::de::Unexpected::Str;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::ops::Index;
+use zenoh::key_expr::KeyExpr;
 use zenoh::{
     prelude::{keyexpr, Value},
     time::Timestamp,
 };
 
+pub enum Event {
+    AddSub(u64, KeyExpr<'static>), // id, key expr
+    DelSub(u64),                   // id
+}
+
 pub struct DataSubValue {
-    deque: VecDeque<(Value, Option<Timestamp>)>,
+    pub deque: VecDeque<(Value, Option<Timestamp>)>,
 }
 
 pub struct DataSubKeyGroup {
+    pub name: String,
+    pub key_expr: String,
+    pub map: BTreeSet<String>, // key
+}
+
+#[derive(Default)]
+pub struct AddSubWindow {
+    id_count: u64,
+    open: bool,
     name: String,
     key_expr: String,
-    map: BTreeSet<String>, // key
+    error_str: Option<String>,
 }
 
 pub struct PageSub {
+    pub events: VecDeque<Event>,
     filtered: bool,
     filter_str: String,
     window_tree_height: f32,
@@ -32,30 +47,17 @@ pub struct PageSub {
     selected_key: String,
     show_selected_key_expr: String,
     key_list_before_filtration: Vec<String>,
-    key_tree: Tree,                            // tree be show
-    key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
-    key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
+    key_tree: Tree,                                // tree be show
+    pub key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
+    pub key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
+    add_sub_window: AddSubWindow,
 }
 
 impl Default for PageSub {
     fn default() -> Self {
-        let mut bm = BTreeMap::new();
-        for i in 1..=20 {
-            let skg_map: BTreeSet<String> = BTreeSet::from([
-                "demo/example/test1".to_string(),
-                "demo/example/test2".to_string(),
-            ]);
-
-            bm.insert(
-                i,
-                DataSubKeyGroup {
-                    name: format!("sub_{}", i),
-                    key_expr: format!("demo/example{}/**", i),
-                    map: skg_map,
-                },
-            );
-        }
         PageSub {
+            events: VecDeque::new(),
+            add_sub_window: AddSubWindow::default(),
             filtered: false,
             filter_str: String::new(),
             window_tree_height: 400.0,
@@ -65,7 +67,7 @@ impl Default for PageSub {
             show_selected_key_expr: String::new(),
             key_list_before_filtration: Vec::new(),
             selected_key: String::new(),
-            key_group: bm,
+            key_group: BTreeMap::new(),
             key_value: BTreeMap::new(),
             key_tree: Tree::default(),
         }
@@ -73,13 +75,19 @@ impl Default for PageSub {
 }
 
 impl PageSub {
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
         ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new(" + ").code()).clicked() {};
+                    if ui.button(RichText::new(" + ").code()).clicked() {
+                        self.add_sub_window.open = true;
+                    };
 
-                    if ui.button(RichText::new(" - ").code()).clicked() {};
+                    if ui.button(RichText::new(" - ").code()).clicked() {
+                        self.events.push_back(Event::DelSub(self.selected_sub_id));
+                        self.selected_sub_id = 0;
+                        self.show_selected_key_expr.clear();
+                    };
                 });
 
                 ui.label("");
@@ -154,6 +162,108 @@ impl PageSub {
                             });
                     });
                 });
+            });
+        });
+
+        self.show_add_sub_window(ctx);
+    }
+
+    fn show_add_sub_window(&mut self, ctx: &Context) {
+        if self.add_sub_window.open == false {
+            return;
+        }
+
+        let window = egui::Window::new("注册新订阅")
+            .collapsible(false)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            let mut show = |ui: &mut Ui| {
+                ui.label("name");
+                let te = TextEdit::singleline(&mut self.add_sub_window.name).code_editor();
+                ui.add(te);
+                ui.end_row();
+
+                ui.label("key expr");
+                let te = TextEdit::multiline(&mut self.add_sub_window.key_expr)
+                    .code_editor()
+                    .desired_rows(2);
+                ui.add(te);
+                ui.end_row();
+            };
+
+            egui::Grid::new("config_grid")
+                .num_columns(2)
+                .striped(true)
+                .show(ui, |ui| {
+                    show(ui);
+                });
+
+            ui.label("");
+            if let Some(s) = &self.add_sub_window.error_str {
+                let text = RichText::new(s).color(Color32::RED);
+                ui.label(text);
+                ui.label("");
+            }
+
+            ui.horizontal(|ui| {
+                ui.label("                 ");
+
+                if ui.button("确定").clicked() {
+                    let name: String = self
+                        .add_sub_window
+                        .name
+                        .replace(&[' ', '\t', '\n', '\r'], "");
+
+                    if name.is_empty() {
+                        self.add_sub_window.error_str = Some(format!("字段 name 不能为空!"));
+                        return;
+                    }
+
+                    let key_expr: String = self
+                        .add_sub_window
+                        .key_expr
+                        .replace(&[' ', '\t', '\n', '\r'], "");
+                    if key_expr.is_empty() {
+                        self.add_sub_window.error_str = Some(format!("字段 key_expr 不能为空!"));
+                        return;
+                    }
+
+                    let z_key_expr = match KeyExpr::new(key_expr.clone()) {
+                        Ok(ke) => ke,
+                        Err(e) => {
+                            self.add_sub_window.error_str = Some(format!("{}", e));
+                            return;
+                        }
+                    };
+
+                    let skg = DataSubKeyGroup {
+                        name,
+                        key_expr,
+                        map: BTreeSet::new(),
+                    };
+                    self.add_sub_window.id_count += 1;
+                    let _ = self.key_group.insert(self.add_sub_window.id_count, skg);
+
+                    self.events
+                        .push_back(Event::AddSub(self.add_sub_window.id_count, z_key_expr));
+
+                    self.add_sub_window.open = false;
+                    self.add_sub_window.name.clear();
+                    self.add_sub_window.key_expr.clear();
+                    self.add_sub_window.error_str = None;
+                }
+
+                ui.label("  ");
+
+                if ui.button("取消").clicked() {
+                    self.add_sub_window.open = false;
+                    self.add_sub_window.name.clear();
+                    self.add_sub_window.key_expr.clear();
+                    self.add_sub_window.error_str = None;
+                }
             });
         });
     }
@@ -468,7 +578,7 @@ fn tree_add_node() {
 fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for s in list {
-        if let Some(_) = s.find(filter_str) {
+        if s.contains(filter_str) {
             out.push(s.clone());
         }
     }
