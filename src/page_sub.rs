@@ -1,14 +1,11 @@
-use eframe::wgpu::Label;
-use egui::epaint::RectShape;
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Layout, Resize,
     RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
 };
 use egui_extras::{Column, Size, TableBuilder};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use zenoh::key_expr::KeyExpr;
 use zenoh::{
-    prelude::{keyexpr, Value},
+    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, Value},
     time::Timestamp,
 };
 
@@ -17,9 +14,38 @@ pub enum Event {
     DelSub(u64),                   // id
 }
 
-#[derive(Default)]
 pub struct DataSubValue {
-    pub deque: VecDeque<(Value, Option<Timestamp>)>,
+    deque: VecDeque<(Value, Option<Timestamp>)>,
+    buffer_size: usize,
+}
+
+impl Default for DataSubValue {
+    fn default() -> Self {
+        DataSubValue {
+            deque: VecDeque::with_capacity(100),
+            buffer_size: 100,
+        }
+    }
+}
+
+impl DataSubValue {
+    pub fn add_data(&mut self, d: (Value, Option<Timestamp>)) {
+        if self.deque.len() == self.buffer_size {
+            let _ = self.deque.pop_front();
+        }
+        let _ = self.deque.push_back(d);
+    }
+
+    pub fn clear(&mut self) {
+        self.deque.clear();
+    }
+
+    pub fn set_buffer_size(&mut self, size: usize) {
+        self.buffer_size = if size < 100 { 100 } else { size };
+        while self.deque.len() >= self.buffer_size {
+            let _ = self.deque.pop_front();
+        }
+    }
 }
 
 pub struct DataSubKeyGroup {
@@ -37,6 +63,22 @@ pub struct AddSubWindow {
     error_str: Option<String>,
 }
 
+pub struct ViewValueWindow {
+    open: bool,
+    value: Value,
+    timestamp: Option<Timestamp>,
+}
+
+impl Default for ViewValueWindow {
+    fn default() -> Self {
+        ViewValueWindow {
+            open: false,
+            value: Value::empty(),
+            timestamp: None,
+        }
+    }
+}
+
 pub struct PageSub {
     pub events: VecDeque<Event>,
     pub new_sub_key_flag: bool,
@@ -47,19 +89,20 @@ pub struct PageSub {
     buffer_size: u32,
     selected_sub_id: u64,
     selected_key: String,
+    selected_key_changed: bool,
     show_selected_key_expr: String,
     key_list_before_filtration: Vec<String>,
     key_tree: Tree,                                // tree be show
     pub key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
     pub key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
     add_sub_window: AddSubWindow,
+    view_value_window: ViewValueWindow,
 }
 
 impl Default for PageSub {
     fn default() -> Self {
         PageSub {
             events: VecDeque::new(),
-            add_sub_window: AddSubWindow::default(),
             filtered: false,
             filter_str: String::new(),
             window_tree_height: 400.0,
@@ -73,6 +116,9 @@ impl Default for PageSub {
             key_value: BTreeMap::new(),
             key_tree: Tree::default(),
             new_sub_key_flag: false,
+            selected_key_changed: false,
+            add_sub_window: AddSubWindow::default(),
+            view_value_window: ViewValueWindow::default(),
         }
     }
 }
@@ -152,11 +198,24 @@ impl PageSub {
                             ui.label("key:");
                             ui.label(RichText::new(&self.selected_key).monospace());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button("清理缓存数据").clicked() {}
+                                if ui.button("清理缓存数据").clicked() {
+                                    if let Some(sd) =
+                                        self.key_value.get_mut(self.selected_key.as_str())
+                                    {
+                                        sd.clear();
+                                    }
+                                }
                             });
                         });
 
                         ui.horizontal(|ui| {
+                            if self.selected_key_changed {
+                                self.selected_key_changed = false;
+                                if let Some(sd) = self.key_value.get_mut(self.selected_key.as_str())
+                                {
+                                    self.buffer_size = sd.buffer_size as u32;
+                                }
+                            }
                             ui.label(format!("buffer size: {}", &self.buffer_size));
                             ui.label("   ");
                             let dv = DragValue::new(&mut self.buffer_size_tmp)
@@ -165,6 +224,10 @@ impl PageSub {
                             ui.add(dv);
                             if ui.button("更新缓存大小").clicked() {
                                 self.buffer_size = self.buffer_size_tmp;
+                                if let Some(sd) = self.key_value.get_mut(self.selected_key.as_str())
+                                {
+                                    sd.set_buffer_size(self.buffer_size as usize);
+                                }
                             }
                         });
 
@@ -306,7 +369,8 @@ impl PageSub {
     }
 
     fn show_key_tree(&mut self, ui: &mut Ui) {
-        self.key_tree.show_ui(&mut self.selected_key, ui);
+        self.key_tree
+            .show_ui(&mut self.selected_key, &mut self.selected_key_changed, ui);
     }
 
     fn filter_key_tree(&mut self) {
@@ -322,13 +386,18 @@ impl PageSub {
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
-            .column(Column::initial(40.0).at_least(40.0))
+            .column(
+                Column::initial(40.0)
+                    .range(40.0..=160.0)
+                    .resizable(true)
+                    .clip(true),
+            )
             .column(Column::auto())
             .column(Column::remainder())
             .resizable(true);
 
         table
-            .header(18.0, |mut header| {
+            .header(20.0, |mut header| {
                 header.col(|ui| {
                     ui.label("值");
                 });
@@ -340,33 +409,51 @@ impl PageSub {
                 });
             })
             .body(|mut body| {
-                for i in 0..100 {
-                    body.row(18.0, |mut row| {
-                        row.col(|ui| {
-                            ui.with_layout(Layout::default().with_cross_justify(true), |ui| {
-                                if i < 30 {
-                                    ui.label(i.to_string());
-                                } else {
-                                    if ui.button(i.to_string()).clicked() {
-                                        println!("row clicked {}", i);
+                if let Some(sd) = self.key_value.get(self.selected_key.as_str()) {
+                    for (d, t) in &sd.deque {
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| match d.encoding {
+                                Encoding::Exact(ke) => match ke {
+                                    KnownEncoding::TextPlain => {
+                                        let text: String =
+                                            d.try_into().unwrap_or("type err".to_string());
+                                        if ui.button(text).clicked() {}
                                     }
+                                    KnownEncoding::AppJson => {
+                                        ui.label("...");
+                                    }
+                                    KnownEncoding::AppInteger => {
+                                        ui.label("...");
+                                    }
+                                    KnownEncoding::AppFloat => {
+                                        ui.label("...");
+                                    }
+                                    KnownEncoding::TextJson => {
+                                        ui.label("...");
+                                    }
+                                    _ => {
+                                        ui.label("...");
+                                    }
+                                },
+                                Encoding::WithSuffix(_, _) => {
+                                    ui.label("...");
+                                }
+                            });
+                            row.col(|ui| {
+                                let text = format!("{}", d.encoding);
+                                ui.label(text);
+                            });
+                            row.col(|ui| {
+                                if let Some(timestamp) = t {
+                                    let text = RichText::new(format!("{}", timestamp.get_time()))
+                                        .size(12.0);
+                                    ui.label(text);
+                                } else {
+                                    ui.label("-");
                                 }
                             });
                         });
-                        row.col(|ui| {
-                            ui.label("nihao");
-                        });
-                        row.col(|ui| {
-                            let text = if (i % 2) == 0 {
-                                RichText::new("2022-12-07T16:24:32.789Z")
-                                    .underline()
-                                    .size(12.0)
-                            } else {
-                                RichText::new("2022-12-07T16:24:32.789Z").size(12.0)
-                            };
-                            ui.label(text);
-                        });
-                    });
+                    }
                 }
             });
     }
@@ -393,7 +480,13 @@ impl TreeNode {
         self.key = Some(key.to_string());
     }
 
-    fn show_ui<'a>(&'a self, tree: &'a Tree, selected_key: &'a mut String, ui: &'a mut Ui) {
+    fn show_ui<'a>(
+        &'a self,
+        tree: &'a Tree,
+        selected_key: &'a mut String,
+        selected_key_changed: &mut bool,
+        ui: &'a mut Ui,
+    ) {
         let name = self.name.clone();
         if let Some(k) = self.key.clone() {
             if ui
@@ -401,6 +494,7 @@ impl TreeNode {
                 .clicked()
             {
                 *selected_key = k;
+                *selected_key_changed = true;
             }
         }
         if self.index_children.is_empty() {
@@ -411,7 +505,7 @@ impl TreeNode {
             .show(ui, |ui| {
                 for (_, index_child) in &self.index_children {
                     let child: &TreeNode = tree.mem.get((*index_child) as usize).unwrap();
-                    child.show_ui(tree, selected_key, ui);
+                    child.show_ui(tree, selected_key, selected_key_changed, ui);
                 }
             });
     }
@@ -432,10 +526,10 @@ impl Tree {
         tree
     }
 
-    pub fn show_ui(&self, selected_key: &mut String, ui: &mut Ui) {
+    pub fn show_ui(&self, selected_key: &mut String, selected_key_changed: &mut bool, ui: &mut Ui) {
         for (_, index_top) in &self.index_top_node {
             let top_node: &TreeNode = self.mem.get((*index_top) as usize).unwrap();
-            top_node.show_ui(self, selected_key, ui);
+            top_node.show_ui(self, selected_key, selected_key_changed, ui);
         }
     }
 

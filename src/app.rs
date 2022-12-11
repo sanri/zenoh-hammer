@@ -207,11 +207,11 @@ impl HammerApp {
                         }
                     }
                     if let Some(sv) = self.p_sub.key_value.get_mut(key) {
-                        sv.deque.push_back((data.value, data.timestamp));
+                        sv.add_data((data.value, data.timestamp));
                     } else {
                         println!("new key: {}", key);
                         let mut sv = DataSubValue::default();
-                        sv.deque.push_back((data.value, data.timestamp));
+                        sv.add_data((data.value, data.timestamp));
                         self.p_sub.key_value.insert(key.to_string(), sv);
                     }
                 }
