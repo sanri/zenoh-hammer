@@ -66,8 +66,8 @@ impl HammerApp {
         ctx.set_pixels_per_point(3.0);
 
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                self.show_bar_contents(ui, frame);
+            ui.horizontal(|ui| {
+                self.show_bar_contents(ui);
             });
         });
 
@@ -90,7 +90,7 @@ impl HammerApp {
         });
     }
 
-    fn show_bar_contents(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
+    fn show_bar_contents(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("文件", |ui| {
             ui.set_min_width(80.0);
 
@@ -179,40 +179,22 @@ impl HammerApp {
                 }
                 MsgZenohToGui::AddSubRes(_) => {}
                 MsgZenohToGui::DelSubRes(id) => {
-                    let mut key_set: BTreeSet<String> = BTreeSet::new();
-                    if let Some(d) = self.p_sub.key_group.remove(&id) {
-                        key_set = d.map;
-                    } else {
-                        continue;
-                    }
-                    let mut all_key_set: BTreeSet<String> = BTreeSet::new();
-                    for (_, data) in &self.p_sub.key_group {
-                        for key in &data.map {
-                            let _ = all_key_set.insert(key.clone());
-                        }
-                    }
-                    let remove_key_list: Vec<String> =
-                        key_set.difference(&all_key_set).cloned().collect();
-                    for remove_key in remove_key_list {
-                        let _ = self.p_sub.key_value.remove(remove_key.as_str());
-                    }
+                    let _ = self.p_sub.key_group.remove(&id);
                 }
                 MsgZenohToGui::SubCB(d) => {
                     let (id, data): (u64, Sample) = *d;
                     let key = data.key_expr.as_str();
 
                     if let Some(skg) = self.p_sub.key_group.get_mut(&id) {
-                        if skg.map.insert(key.to_string()) {
+                        if let Some(sv) = skg.map.get_mut(key) {
+                            sv.add_data((data.value, data.timestamp));
+                        } else {
+                            println!("new key: {}", key);
+                            let mut sv = DataSubValue::default();
+                            sv.add_data((data.value, data.timestamp));
+                            let _ = skg.map.insert(key.to_string(), sv);
                             self.p_sub.new_sub_key_flag = true;
                         }
-                    }
-                    if let Some(sv) = self.p_sub.key_value.get_mut(key) {
-                        sv.add_data((data.value, data.timestamp));
-                    } else {
-                        println!("new key: {}", key);
-                        let mut sv = DataSubValue::default();
-                        sv.add_data((data.value, data.timestamp));
-                        self.p_sub.key_value.insert(key.to_string(), sv);
                     }
                 }
                 MsgZenohToGui::GetRes(_) => {}

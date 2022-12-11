@@ -1,3 +1,4 @@
+use crate::page_sub::ViewValueWindowPage::Parse;
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Layout, Resize,
     RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
@@ -51,7 +52,7 @@ impl DataSubValue {
 pub struct DataSubKeyGroup {
     pub name: String,
     pub key_expr: String,
-    pub map: BTreeSet<String>, // key
+    pub map: BTreeMap<String, DataSubValue>, // key
 }
 
 #[derive(Default)]
@@ -63,8 +64,16 @@ pub struct AddSubWindow {
     error_str: Option<String>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ViewValueWindowPage {
+    Raw,
+    Parse,
+}
+
 pub struct ViewValueWindow {
-    open: bool,
+    // open: bool,
+    selected_page: ViewValueWindowPage,
+    key: String,
     value: Value,
     timestamp: Option<Timestamp>,
 }
@@ -72,10 +81,64 @@ pub struct ViewValueWindow {
 impl Default for ViewValueWindow {
     fn default() -> Self {
         ViewValueWindow {
-            open: false,
+            // open: false,
+            selected_page: ViewValueWindowPage::Parse,
+            key: String::new(),
             value: Value::empty(),
             timestamp: None,
         }
+    }
+}
+
+impl ViewValueWindow {
+    fn show(&mut self, ctx: &Context, is_open:&mut bool) {
+        let window = egui::Window::new("注册新订阅")
+            .collapsible(false)
+            .open(is_open)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            self.show_bar_contents(ui);
+
+            match self.selected_page {
+                ViewValueWindowPage::Raw => {
+                    self.show_page_raw(ui);
+                }
+                ViewValueWindowPage::Parse => {
+                    self.show_page_parse(ui);
+                }
+            };
+        });
+    }
+
+    fn show_bar_contents(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.selected_page == ViewValueWindowPage::Parse, "解析数据")
+                .clicked()
+            {
+                self.selected_page = ViewValueWindowPage::Parse;
+            }
+
+            if ui
+                .selectable_label(self.selected_page == ViewValueWindowPage::Raw, "原始数据")
+                .clicked()
+            {
+                self.selected_page = ViewValueWindowPage::Raw;
+            }
+
+            ui.separator();
+        });
+    }
+
+    fn show_page_raw(&mut self, ui: &mut Ui) {
+        ui.label("raw");
+    }
+
+    fn show_page_parse(&mut self, ui: &mut Ui) {
+        ui.label("parse");
     }
 }
 
@@ -89,13 +152,13 @@ pub struct PageSub {
     buffer_size: u32,
     selected_sub_id: u64,
     selected_key: String,
-    selected_key_changed: bool,
+    selected_sub_id_or_key_changed: bool,
     show_selected_key_expr: String,
     key_list_before_filtration: Vec<String>,
     key_tree: Tree,                                // tree be show
     pub key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
-    pub key_value: BTreeMap<String, DataSubValue>, // <key, data deque>
     add_sub_window: AddSubWindow,
+    show_view_value_window:bool,
     view_value_window: ViewValueWindow,
 }
 
@@ -113,11 +176,11 @@ impl Default for PageSub {
             key_list_before_filtration: Vec::new(),
             selected_key: String::new(),
             key_group: BTreeMap::new(),
-            key_value: BTreeMap::new(),
             key_tree: Tree::default(),
             new_sub_key_flag: false,
-            selected_key_changed: false,
+            selected_sub_id_or_key_changed: false,
             add_sub_window: AddSubWindow::default(),
+            show_view_value_window:false,
             view_value_window: ViewValueWindow::default(),
         }
     }
@@ -128,7 +191,10 @@ impl PageSub {
         if self.new_sub_key_flag {
             self.new_sub_key_flag = false;
             if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
-                self.key_list_before_filtration = skg.map.iter().cloned().collect();
+                self.key_list_before_filtration.clear();
+                for (key, _) in &skg.map {
+                    self.key_list_before_filtration.push(key.clone());
+                }
                 self.filter_key_tree();
             }
         }
@@ -199,21 +265,25 @@ impl PageSub {
                             ui.label(RichText::new(&self.selected_key).monospace());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui.button("清理缓存数据").clicked() {
-                                    if let Some(sd) =
-                                        self.key_value.get_mut(self.selected_key.as_str())
+                                    if let Some(skg) = self.key_group.get_mut(&self.selected_sub_id)
                                     {
-                                        sd.clear();
+                                        if let Some(sd) =
+                                            skg.map.get_mut(self.selected_key.as_str())
+                                        {
+                                            sd.clear();
+                                        }
                                     }
                                 }
                             });
                         });
 
                         ui.horizontal(|ui| {
-                            if self.selected_key_changed {
-                                self.selected_key_changed = false;
-                                if let Some(sd) = self.key_value.get_mut(self.selected_key.as_str())
-                                {
-                                    self.buffer_size = sd.buffer_size as u32;
+                            if self.selected_sub_id_or_key_changed {
+                                self.selected_sub_id_or_key_changed = false;
+                                if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
+                                    if let Some(sd) = skg.map.get(self.selected_key.as_str()) {
+                                        self.buffer_size = sd.buffer_size as u32;
+                                    }
                                 }
                             }
                             ui.label(format!("buffer size: {}", &self.buffer_size));
@@ -224,9 +294,10 @@ impl PageSub {
                             ui.add(dv);
                             if ui.button("更新缓存大小").clicked() {
                                 self.buffer_size = self.buffer_size_tmp;
-                                if let Some(sd) = self.key_value.get_mut(self.selected_key.as_str())
-                                {
-                                    sd.set_buffer_size(self.buffer_size as usize);
+                                if let Some(skg) = self.key_group.get_mut(&self.selected_sub_id) {
+                                    if let Some(sd) = skg.map.get_mut(self.selected_key.as_str()) {
+                                        sd.set_buffer_size(self.buffer_size as usize);
+                                    }
                                 }
                             }
                         });
@@ -242,6 +313,8 @@ impl PageSub {
         });
 
         self.show_add_sub_window(ctx);
+
+        self.view_value_window.show(ctx,&mut self.show_view_value_window);
     }
 
     fn show_add_sub_window(&mut self, ctx: &Context) {
@@ -318,7 +391,7 @@ impl PageSub {
                     let skg = DataSubKeyGroup {
                         name,
                         key_expr,
-                        map: BTreeSet::new(),
+                        map: BTreeMap::new(),
                     };
                     self.add_sub_window.id_count += 1;
                     let _ = self.key_group.insert(self.add_sub_window.id_count, skg);
@@ -356,9 +429,13 @@ impl PageSub {
                         .selectable_label((*i) == self.selected_sub_id, text)
                         .clicked()
                     {
+                        self.selected_sub_id_or_key_changed = true;
                         self.selected_sub_id = *i;
                         self.show_selected_key_expr = d.key_expr.clone();
-                        self.key_list_before_filtration = d.map.iter().cloned().collect();
+                        self.key_list_before_filtration.clear();
+                        for (key, _) in &d.map {
+                            self.key_list_before_filtration.push(key.clone());
+                        }
                         clicked = true;
                     }
                 }
@@ -369,8 +446,11 @@ impl PageSub {
     }
 
     fn show_key_tree(&mut self, ui: &mut Ui) {
-        self.key_tree
-            .show_ui(&mut self.selected_key, &mut self.selected_key_changed, ui);
+        self.key_tree.show_ui(
+            &mut self.selected_key,
+            &mut self.selected_sub_id_or_key_changed,
+            ui,
+        );
     }
 
     fn filter_key_tree(&mut self) {
@@ -409,50 +489,53 @@ impl PageSub {
                 });
             })
             .body(|mut body| {
-                if let Some(sd) = self.key_value.get(self.selected_key.as_str()) {
-                    for (d, t) in &sd.deque {
-                        body.row(20.0, |mut row| {
-                            row.col(|ui| match d.encoding {
-                                Encoding::Exact(ke) => match ke {
-                                    KnownEncoding::TextPlain => {
-                                        let text: String =
-                                            d.try_into().unwrap_or("type err".to_string());
-                                        if ui.button(text).clicked() {}
-                                    }
-                                    KnownEncoding::AppJson => {
+                if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
+                    if let Some(sd) = skg.map.get(self.selected_key.as_str()) {
+                        for (d, t) in &sd.deque {
+                            body.row(20.0, |mut row| {
+                                row.col(|ui| match d.encoding {
+                                    Encoding::Exact(ke) => match ke {
+                                        KnownEncoding::TextPlain => {
+                                            let text: String =
+                                                d.try_into().unwrap_or("type err".to_string());
+                                            if ui.button(text).clicked() {}
+                                        }
+                                        KnownEncoding::AppJson => {
+                                            ui.label("...");
+                                        }
+                                        KnownEncoding::AppInteger => {
+                                            ui.label("...");
+                                        }
+                                        KnownEncoding::AppFloat => {
+                                            ui.label("...");
+                                        }
+                                        KnownEncoding::TextJson => {
+                                            ui.label("...");
+                                        }
+                                        _ => {
+                                            ui.label("...");
+                                        }
+                                    },
+                                    Encoding::WithSuffix(_, _) => {
                                         ui.label("...");
                                     }
-                                    KnownEncoding::AppInteger => {
-                                        ui.label("...");
-                                    }
-                                    KnownEncoding::AppFloat => {
-                                        ui.label("...");
-                                    }
-                                    KnownEncoding::TextJson => {
-                                        ui.label("...");
-                                    }
-                                    _ => {
-                                        ui.label("...");
-                                    }
-                                },
-                                Encoding::WithSuffix(_, _) => {
-                                    ui.label("...");
-                                }
-                            });
-                            row.col(|ui| {
-                                let text = format!("{}", d.encoding);
-                                ui.label(text);
-                            });
-                            row.col(|ui| {
-                                if let Some(timestamp) = t {
-                                    let text = RichText::new(format!("{}", timestamp.get_time()))
-                                        .size(12.0);
+                                });
+                                row.col(|ui| {
+                                    let text = format!("{}", d.encoding);
                                     ui.label(text);
-                                } else {
-                                    ui.label("-");
-                                }
+                                });
+                                row.col(|ui| {
+                                    if let Some(timestamp) = t {
+                                        let text =
+                                            RichText::new(format!("{}", timestamp.get_time()))
+                                                .size(12.0);
+                                        ui.label(text);
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                });
                             });
-                        });
+                        }
                     }
                 }
             });
