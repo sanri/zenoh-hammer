@@ -6,13 +6,15 @@ use crate::page_sub::{DataSubKeyGroup, DataSubValue, PageSub};
 use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
 use crate::{page_session, page_sub};
 use eframe::{emath::Align, Frame};
-use egui::{Context, Layout};
+use egui::{Color32, Context, Layout, RichText};
 use flume::{unbounded, TryRecvError};
 use std::collections::BTreeSet;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
-use zenoh::prelude::KeyExpr;
-use zenoh::sample::Sample;
+use zenoh::prelude::SplitBuffer;
+use zenoh::{prelude::KeyExpr, sample::Sample, value::Value};
+
+pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, AsRefStr, EnumIter)]
 pub enum Page {
@@ -187,11 +189,11 @@ impl HammerApp {
 
                     if let Some(skg) = self.p_sub.key_group.get_mut(&id) {
                         if let Some(sv) = skg.map.get_mut(key) {
-                            sv.add_data((data.value, data.timestamp));
+                            sv.add_data((data.value, data.kind, data.timestamp));
                         } else {
                             println!("new key: {}", key);
                             let mut sv = DataSubValue::default();
-                            sv.add_data((data.value, data.timestamp));
+                            sv.add_data((data.value, data.kind, data.timestamp));
                             let _ = skg.map.insert(key.to_string(), sv);
                             self.p_sub.new_sub_key_flag = true;
                         }
@@ -256,4 +258,32 @@ impl HammerApp {
             }
         }
     }
+}
+
+pub fn i64_create_rich_text(d: &Value) -> RichText {
+    let text: RichText = match i64::try_from(d) {
+        Ok(o) => RichText::new(format!("{}", o)).monospace(),
+        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
+    };
+    text
+}
+
+pub fn f64_create_rich_text(d: &Value) -> RichText {
+    let text: RichText = match f64::try_from(d) {
+        Ok(o) => RichText::new(format!("{}", o)).monospace(),
+        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
+    };
+    text
+}
+
+pub fn text_plant_create_rich_text(d: &Value) -> RichText {
+    let text: RichText = if d.payload.len() < 30 {
+        match String::try_from(d) {
+            Ok(o) => RichText::new(o).monospace(),
+            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
+        }
+    } else {
+        RichText::new("...")
+    };
+    text
 }

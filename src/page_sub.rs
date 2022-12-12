@@ -1,14 +1,20 @@
-use crate::page_sub::ViewValueWindowPage::Parse;
+use crate::app::{
+    f64_create_rich_text, i64_create_rich_text, text_plant_create_rich_text,
+    VALUE_BUFFER_SIZE_DEFAULT,
+};
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Id, Layout,
     Resize, RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
 };
 use egui_extras::{Column, Size, TableBuilder};
-use log::kv::ToValue;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    time::{Duration, SystemTime},
+};
+use zenoh::prelude::SplitBuffer;
 use zenoh::{
-    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, Value},
-    time::Timestamp,
+    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, SampleKind, Value},
+    time::{Timestamp, NTP64},
 };
 
 pub enum Event {
@@ -17,21 +23,21 @@ pub enum Event {
 }
 
 pub struct DataSubValue {
-    deque: VecDeque<(Value, Option<Timestamp>)>,
+    deque: VecDeque<(Value, SampleKind, Option<Timestamp>)>,
     buffer_size: usize,
 }
 
 impl Default for DataSubValue {
     fn default() -> Self {
         DataSubValue {
-            deque: VecDeque::with_capacity(100),
-            buffer_size: 100,
+            deque: VecDeque::with_capacity(VALUE_BUFFER_SIZE_DEFAULT),
+            buffer_size: VALUE_BUFFER_SIZE_DEFAULT,
         }
     }
 }
 
 impl DataSubValue {
-    pub fn add_data(&mut self, d: (Value, Option<Timestamp>)) {
+    pub fn add_data(&mut self, d: (Value, SampleKind, Option<Timestamp>)) {
         if self.deque.len() == self.buffer_size {
             let _ = self.deque.pop_front();
         }
@@ -43,7 +49,11 @@ impl DataSubValue {
     }
 
     pub fn set_buffer_size(&mut self, size: usize) {
-        self.buffer_size = if size < 100 { 100 } else { size };
+        self.buffer_size = if size < VALUE_BUFFER_SIZE_DEFAULT {
+            VALUE_BUFFER_SIZE_DEFAULT
+        } else {
+            size
+        };
         while self.deque.len() >= self.buffer_size {
             let _ = self.deque.pop_front();
         }
@@ -173,21 +183,23 @@ enum ViewValueWindowPage {
 }
 
 pub struct ViewValueWindow {
-    // open: bool,
     selected_page: ViewValueWindowPage,
     key: String,
     value: Value,
+    kind: SampleKind,
     timestamp: Option<Timestamp>,
+    raw_data_offset: u64,
 }
 
 impl Default for ViewValueWindow {
     fn default() -> Self {
         ViewValueWindow {
-            // open: false,
             selected_page: ViewValueWindowPage::Parse,
             key: String::new(),
             value: Value::empty(),
+            kind: SampleKind::Put,
             timestamp: None,
+            raw_data_offset: u64::MAX,
         }
     }
 }
@@ -197,13 +209,18 @@ impl ViewValueWindow {
         let window = egui::Window::new("详细信息")
             .id(Id::new("view value window"))
             .collapsible(false)
+            .scroll2([true, true])
             .open(is_open)
             .resizable(true)
             .default_width(200.0)
             .min_width(200.0);
 
         window.show(ctx, |ui| {
-            self.show_bar_contents(ui);
+            self.show_base_info(ui);
+
+            ui.separator();
+
+            self.show_tab_label(ui);
 
             match self.selected_page {
                 ViewValueWindowPage::Raw => {
@@ -216,7 +233,54 @@ impl ViewValueWindow {
         });
     }
 
-    fn show_bar_contents(&mut self, ui: &mut Ui) {
+    fn clone_from(
+        &mut self,
+        value: &Value,
+        key: &String,
+        kind: &SampleKind,
+        timestamp: &Option<Timestamp>,
+    ) {
+        self.key = key.clone();
+        self.kind = kind.clone();
+        self.timestamp = timestamp.clone();
+        self.value = value.clone();
+    }
+
+    fn show_base_info(&mut self, ui: &mut Ui) {
+        let mut show_ui = |ui: &mut Ui| {
+            ui.label("key:  ");
+            let text = RichText::new(self.key.as_str()).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("kind:  ");
+            let text = RichText::new(self.kind.to_string()).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("encoding:  ");
+            let text = RichText::new(format!("{}", self.value.encoding)).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("timestamp:  ");
+            let text = if let Some(t) = self.timestamp {
+                RichText::new(t.to_string().replace('/', "\n")).monospace()
+            } else {
+                RichText::new("none").monospace()
+            };
+            ui.label(text);
+            ui.end_row();
+        };
+
+        egui::Grid::new("config_grid")
+            .num_columns(2)
+            .show(ui, |ui| {
+                show_ui(ui);
+            });
+    }
+
+    fn show_tab_label(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if ui
                 .selectable_label(self.selected_page == ViewValueWindowPage::Parse, "解析数据")
@@ -231,17 +295,38 @@ impl ViewValueWindow {
             {
                 self.selected_page = ViewValueWindowPage::Raw;
             }
-
-            ui.separator();
         });
     }
 
     fn show_page_raw(&mut self, ui: &mut Ui) {
-        ui.label("raw");
+        ui.label(format!("offset: {}", self.raw_data_offset));
     }
 
     fn show_page_parse(&mut self, ui: &mut Ui) {
-        ui.label("parse");
+        match self.value.encoding.prefix() {
+            KnownEncoding::TextPlain => {
+                let mut s = match String::try_from(&self.value) {
+                    Ok(s) => s,
+                    Err(e) => format!("{}", e),
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
+            KnownEncoding::AppJson => {}
+            KnownEncoding::AppInteger => {
+                let text: RichText = i64_create_rich_text(&self.value);
+                ui.label(text);
+            }
+            KnownEncoding::AppFloat => {
+                let text: RichText = f64_create_rich_text(&self.value);
+                ui.label(text);
+            }
+            KnownEncoding::TextJson => {}
+            _ => {}
+        }
     }
 }
 
@@ -273,8 +358,8 @@ impl Default for PageSub {
             filtered: false,
             filter_str: String::new(),
             window_tree_height: 400.0,
-            buffer_size_tmp: 100,
-            buffer_size: 100,
+            buffer_size_tmp: VALUE_BUFFER_SIZE_DEFAULT as u32,
+            buffer_size: VALUE_BUFFER_SIZE_DEFAULT as u32,
             selected_sub_id: 0,
             show_selected_key_expr: String::new(),
             key_list_before_filtration: Vec::new(),
@@ -381,9 +466,20 @@ impl PageSub {
                                 }
 
                                 if ui.button("value").clicked() {
+                                    use uhlc::ID;
+                                    use uuid::Uuid;
+
                                     self.show_view_value_window = true;
                                     self.view_value_window.key = "demo/example/test1".to_string();
                                     self.view_value_window.value = Value::from("hello world");
+                                    let time: NTP64 = Duration::from_secs(100).into();
+                                    let buf = [
+                                        0x1a, 0x2b, 0x3c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                    ];
+                                    let id = ID::from(Uuid::new_v4());
+                                    self.view_value_window.timestamp =
+                                        Some(Timestamp::new(time, id));
                                 }
                             });
                         });
@@ -401,7 +497,7 @@ impl PageSub {
                             ui.label("   ");
                             let dv = DragValue::new(&mut self.buffer_size_tmp)
                                 .speed(10.0)
-                                .clamp_range(100..=10000);
+                                .clamp_range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
                             ui.add(dv);
                             if ui.button("更新缓存大小").clicked() {
                                 self.buffer_size = self.buffer_size_tmp;
@@ -508,23 +604,34 @@ impl PageSub {
             .body(|mut body| {
                 if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
                     if let Some(sd) = skg.map.get(self.selected_key.as_str()) {
-                        for (d, t) in &sd.deque {
+                        let key = &self.selected_key;
+                        for (d, k, t) in &sd.deque {
                             body.row(20.0, |mut row| {
                                 row.col(|ui| match d.encoding {
                                     Encoding::Exact(ke) => match ke {
                                         KnownEncoding::TextPlain => {
-                                            let text: String =
-                                                d.try_into().unwrap_or("type err".to_string());
-                                            if ui.button(text).clicked() {}
+                                            let text: RichText = text_plant_create_rich_text(d);
+                                            if ui.button(text).clicked() {
+                                                self.show_view_value_window = true;
+                                                self.view_value_window.clone_from(d, key, k, t);
+                                            }
                                         }
                                         KnownEncoding::AppJson => {
                                             ui.label("...");
                                         }
                                         KnownEncoding::AppInteger => {
-                                            ui.label("...");
+                                            let text: RichText = i64_create_rich_text(d);
+                                            if ui.button(text).clicked() {
+                                                self.show_view_value_window = true;
+                                                self.view_value_window.clone_from(d, key, k, t);
+                                            }
                                         }
                                         KnownEncoding::AppFloat => {
-                                            ui.label("...");
+                                            let text: RichText = f64_create_rich_text(d);
+                                            if ui.button(text).clicked() {
+                                                self.show_view_value_window = true;
+                                                self.view_value_window.clone_from(d, key, k, t);
+                                            }
                                         }
                                         KnownEncoding::TextJson => {
                                             ui.label("...");

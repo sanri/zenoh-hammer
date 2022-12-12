@@ -4264,6 +4264,8 @@ dependencies = [
  "strum",
  "strum_macros",
  "tracing-subscriber",
+ "uhlc",
+ "uuid",
  "zenoh",
 ]
 
