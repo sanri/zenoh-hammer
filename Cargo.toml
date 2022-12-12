@@ -10,7 +10,7 @@ egui = { version = "0.20" }
 egui_extras = { version = "0.20" }
 eframe = { version = "0.20", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 tracing-subscriber = "0.3"
-zenoh = { git = "https://github.com/sanri/zenoh.git", features = [ "unstable" ] }
+zenoh = { git = "https://github.com/eclipse-zenoh/zenoh" }
 async-std = { version = "=1.12", default-features = false }
 futures = "0.3"
 flume = "0.10"

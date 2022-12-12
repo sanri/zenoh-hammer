@@ -4,7 +4,6 @@ use futures::select;
 use std::{clone, collections::BTreeMap, sync::Arc, thread, time::Duration};
 
 use zenoh::{
-    plugins::ZResult,
     prelude::{r#async::*, Config, KeyExpr, Sample, Session},
     subscriber::Subscriber,
 };

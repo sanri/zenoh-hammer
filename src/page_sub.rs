@@ -1,9 +1,10 @@
 use crate::page_sub::ViewValueWindowPage::Parse;
 use egui::{
-    vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Layout, Resize,
-    RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
+    vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Id, Layout,
+    Resize, RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
 };
 use egui_extras::{Column, Size, TableBuilder};
+use log::kv::ToValue;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use zenoh::{
     prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, Value},
@@ -58,10 +59,111 @@ pub struct DataSubKeyGroup {
 #[derive(Default)]
 pub struct AddSubWindow {
     id_count: u64,
-    open: bool,
     name: String,
     key_expr: String,
     error_str: Option<String>,
+}
+
+impl AddSubWindow {
+    fn show(
+        &mut self,
+        ctx: &Context,
+        is_open: &mut bool,
+        key_group: &mut BTreeMap<u64, DataSubKeyGroup>,
+        events: &mut VecDeque<Event>,
+    ) {
+        if (*is_open) == false {
+            return;
+        }
+
+        let window = egui::Window::new("注册新订阅")
+            .id(Id::new("add sub window"))
+            .collapsible(false)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            let mut show = |ui: &mut Ui| {
+                ui.label("name");
+                let te = TextEdit::singleline(&mut self.name).code_editor();
+                ui.add(te);
+                ui.end_row();
+
+                ui.label("key expr");
+                let te = TextEdit::multiline(&mut self.key_expr)
+                    .code_editor()
+                    .desired_rows(2);
+                ui.add(te);
+                ui.end_row();
+            };
+
+            egui::Grid::new("config_grid")
+                .num_columns(2)
+                .striped(true)
+                .show(ui, |ui| {
+                    show(ui);
+                });
+
+            ui.label("");
+            if let Some(s) = &self.error_str {
+                let text = RichText::new(s).color(Color32::RED);
+                ui.label(text);
+                ui.label("");
+            }
+
+            ui.horizontal(|ui| {
+                ui.label("                 ");
+
+                if ui.button("确定").clicked() {
+                    let name: String = self.name.replace(&[' ', '\t', '\n', '\r'], "");
+
+                    if name.is_empty() {
+                        self.error_str = Some(format!("字段 name 不能为空!"));
+                        return;
+                    }
+
+                    let key_expr: String = self.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
+                    if key_expr.is_empty() {
+                        self.error_str = Some(format!("字段 key_expr 不能为空!"));
+                        return;
+                    }
+
+                    let z_key_expr = match KeyExpr::new(key_expr.clone()) {
+                        Ok(ke) => ke,
+                        Err(e) => {
+                            self.error_str = Some(format!("{}", e));
+                            return;
+                        }
+                    };
+
+                    let skg = DataSubKeyGroup {
+                        name,
+                        key_expr,
+                        map: BTreeMap::new(),
+                    };
+                    self.id_count += 1;
+                    let _ = key_group.insert(self.id_count, skg);
+
+                    events.push_back(Event::AddSub(self.id_count, z_key_expr));
+
+                    *is_open = false;
+                    self.name.clear();
+                    self.key_expr.clear();
+                    self.error_str = None;
+                }
+
+                ui.label("  ");
+
+                if ui.button("取消").clicked() {
+                    *is_open = false;
+                    self.name.clear();
+                    self.key_expr.clear();
+                    self.error_str = None;
+                }
+            });
+        });
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -91,8 +193,9 @@ impl Default for ViewValueWindow {
 }
 
 impl ViewValueWindow {
-    fn show(&mut self, ctx: &Context, is_open:&mut bool) {
-        let window = egui::Window::new("注册新订阅")
+    fn show(&mut self, ctx: &Context, is_open: &mut bool) {
+        let window = egui::Window::new("详细信息")
+            .id(Id::new("view value window"))
             .collapsible(false)
             .open(is_open)
             .resizable(true)
@@ -157,8 +260,9 @@ pub struct PageSub {
     key_list_before_filtration: Vec<String>,
     key_tree: Tree,                                // tree be show
     pub key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
+    show_add_sub_window: bool,
     add_sub_window: AddSubWindow,
-    show_view_value_window:bool,
+    show_view_value_window: bool,
     view_value_window: ViewValueWindow,
 }
 
@@ -179,8 +283,9 @@ impl Default for PageSub {
             key_tree: Tree::default(),
             new_sub_key_flag: false,
             selected_sub_id_or_key_changed: false,
+            show_add_sub_window: false,
             add_sub_window: AddSubWindow::default(),
-            show_view_value_window:false,
+            show_view_value_window: false,
             view_value_window: ViewValueWindow::default(),
         }
     }
@@ -203,7 +308,7 @@ impl PageSub {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     if ui.button(RichText::new(" + ").code()).clicked() {
-                        self.add_sub_window.open = true;
+                        self.show_add_sub_window = true;
                     };
 
                     if ui.button(RichText::new(" - ").code()).clicked() {
@@ -274,6 +379,12 @@ impl PageSub {
                                         }
                                     }
                                 }
+
+                                if ui.button("value").clicked() {
+                                    self.show_view_value_window = true;
+                                    self.view_value_window.key = "demo/example/test1".to_string();
+                                    self.view_value_window.value = Value::from("hello world");
+                                }
                             });
                         });
 
@@ -312,109 +423,15 @@ impl PageSub {
             });
         });
 
-        self.show_add_sub_window(ctx);
+        self.add_sub_window.show(
+            ctx,
+            &mut self.show_add_sub_window,
+            &mut self.key_group,
+            &mut self.events,
+        );
 
-        self.view_value_window.show(ctx,&mut self.show_view_value_window);
-    }
-
-    fn show_add_sub_window(&mut self, ctx: &Context) {
-        if self.add_sub_window.open == false {
-            return;
-        }
-
-        let window = egui::Window::new("注册新订阅")
-            .collapsible(false)
-            .resizable(true)
-            .default_width(200.0)
-            .min_width(200.0);
-
-        window.show(ctx, |ui| {
-            let mut show = |ui: &mut Ui| {
-                ui.label("name");
-                let te = TextEdit::singleline(&mut self.add_sub_window.name).code_editor();
-                ui.add(te);
-                ui.end_row();
-
-                ui.label("key expr");
-                let te = TextEdit::multiline(&mut self.add_sub_window.key_expr)
-                    .code_editor()
-                    .desired_rows(2);
-                ui.add(te);
-                ui.end_row();
-            };
-
-            egui::Grid::new("config_grid")
-                .num_columns(2)
-                .striped(true)
-                .show(ui, |ui| {
-                    show(ui);
-                });
-
-            ui.label("");
-            if let Some(s) = &self.add_sub_window.error_str {
-                let text = RichText::new(s).color(Color32::RED);
-                ui.label(text);
-                ui.label("");
-            }
-
-            ui.horizontal(|ui| {
-                ui.label("                 ");
-
-                if ui.button("确定").clicked() {
-                    let name: String = self
-                        .add_sub_window
-                        .name
-                        .replace(&[' ', '\t', '\n', '\r'], "");
-
-                    if name.is_empty() {
-                        self.add_sub_window.error_str = Some(format!("字段 name 不能为空!"));
-                        return;
-                    }
-
-                    let key_expr: String = self
-                        .add_sub_window
-                        .key_expr
-                        .replace(&[' ', '\t', '\n', '\r'], "");
-                    if key_expr.is_empty() {
-                        self.add_sub_window.error_str = Some(format!("字段 key_expr 不能为空!"));
-                        return;
-                    }
-
-                    let z_key_expr = match KeyExpr::new(key_expr.clone()) {
-                        Ok(ke) => ke,
-                        Err(e) => {
-                            self.add_sub_window.error_str = Some(format!("{}", e));
-                            return;
-                        }
-                    };
-
-                    let skg = DataSubKeyGroup {
-                        name,
-                        key_expr,
-                        map: BTreeMap::new(),
-                    };
-                    self.add_sub_window.id_count += 1;
-                    let _ = self.key_group.insert(self.add_sub_window.id_count, skg);
-
-                    self.events
-                        .push_back(Event::AddSub(self.add_sub_window.id_count, z_key_expr));
-
-                    self.add_sub_window.open = false;
-                    self.add_sub_window.name.clear();
-                    self.add_sub_window.key_expr.clear();
-                    self.add_sub_window.error_str = None;
-                }
-
-                ui.label("  ");
-
-                if ui.button("取消").clicked() {
-                    self.add_sub_window.open = false;
-                    self.add_sub_window.name.clear();
-                    self.add_sub_window.key_expr.clear();
-                    self.add_sub_window.error_str = None;
-                }
-            });
-        });
+        self.view_value_window
+            .show(ctx, &mut self.show_view_value_window);
     }
 
     fn show_subscribers(&mut self, ui: &mut Ui) {
