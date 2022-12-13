@@ -1,6 +1,6 @@
 use crate::page_get::PageGet;
 use crate::page_pub::PagePub;
-use crate::page_put::PagePut;
+use crate::page_put::{Event, PagePut};
 use crate::page_session::PageSession;
 use crate::page_sub::{DataSubKeyGroup, DataSubValue, PageSub};
 use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
@@ -58,6 +58,7 @@ impl eframe::App for HammerApp {
         self.processing_zenoh_msg();
         self.processing_page_session_events();
         self.processing_page_sub_events();
+        self.processing_page_put_events();
         self.show_ui(ctx, frame);
         ctx.request_repaint();
     }
@@ -203,7 +204,16 @@ impl HammerApp {
                 MsgZenohToGui::AddPubRes => {}
                 MsgZenohToGui::DelPubRes => {}
                 MsgZenohToGui::PubRes => {}
-                MsgZenohToGui::PutRes => {}
+                MsgZenohToGui::PutRes(r) => {
+                    let (id, b, s) = *r;
+                    if let Some(pd) = self.p_put.data_map.get_mut(&id) {
+                        pd.info = if b {
+                            Some(RichText::new(s))
+                        } else {
+                            Some(RichText::new(s).color(Color32::RED))
+                        }
+                    }
+                }
             }
         }
     }
@@ -258,6 +268,18 @@ impl HammerApp {
             }
         }
     }
+
+    fn processing_page_put_events(&mut self) {
+        while let Some(event) = self.p_put.events.pop_front() {
+            match event {
+                Event::Put(p) => {
+                    if let Some(sender) = &self.sender_to_zenoh {
+                        let _ = sender.send(MsgGuiToZenoh::PutReq(p));
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn i64_create_rich_text(d: &Value) -> RichText {
@@ -280,6 +302,18 @@ pub fn text_plant_create_rich_text(d: &Value) -> RichText {
     let text: RichText = if d.payload.len() < 30 {
         match String::try_from(d) {
             Ok(o) => RichText::new(o).monospace(),
+            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
+        }
+    } else {
+        RichText::new("...")
+    };
+    text
+}
+
+pub fn json_create_rich_text(d: &Value) -> RichText {
+    let text: RichText = if d.payload.len() < 30 {
+        match serde_json::Value::try_from(d) {
+            Ok(o) => RichText::new(format!("{}", o)).monospace(),
             Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
         }
     } else {

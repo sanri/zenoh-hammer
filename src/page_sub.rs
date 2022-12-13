@@ -1,10 +1,10 @@
 use crate::app::{
-    f64_create_rich_text, i64_create_rich_text, text_plant_create_rich_text,
+    f64_create_rich_text, i64_create_rich_text, json_create_rich_text, text_plant_create_rich_text,
     VALUE_BUFFER_SIZE_DEFAULT,
 };
 use egui::{
     vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Id, Layout,
-    Resize, RichText, ScrollArea, SelectableLabel, TextEdit, Ui,
+    Resize, RichText, ScrollArea, SelectableLabel, TextEdit, TextStyle, Ui,
 };
 use egui_extras::{Column, Size, TableBuilder};
 use std::{
@@ -96,13 +96,13 @@ impl AddSubWindow {
         window.show(ctx, |ui| {
             let mut show = |ui: &mut Ui| {
                 ui.label("name");
-                let te = TextEdit::singleline(&mut self.name).code_editor();
+                let te = TextEdit::singleline(&mut self.name).font(TextStyle::Monospace);
                 ui.add(te);
                 ui.end_row();
 
                 ui.label("key expr");
                 let te = TextEdit::multiline(&mut self.key_expr)
-                    .code_editor()
+                    .font(TextStyle::Monospace)
                     .desired_rows(2);
                 ui.add(te);
                 ui.end_row();
@@ -315,7 +315,21 @@ impl ViewValueWindow {
                         .code_editor(),
                 );
             }
-            KnownEncoding::AppJson => {}
+            KnownEncoding::AppJson => {
+                let mut s: String = match serde_json::Value::try_from(&self.value) {
+                    Ok(o) => {
+                        format!("{:#}", o)
+                    }
+                    Err(e) => {
+                        format!("{}", e)
+                    }
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
             KnownEncoding::AppInteger => {
                 let text: RichText = i64_create_rich_text(&self.value);
                 ui.label(text);
@@ -324,7 +338,21 @@ impl ViewValueWindow {
                 let text: RichText = f64_create_rich_text(&self.value);
                 ui.label(text);
             }
-            KnownEncoding::TextJson => {}
+            KnownEncoding::TextJson => {
+                let mut s: String = match serde_json::Value::try_from(&self.value) {
+                    Ok(o) => {
+                        format!("{:#}", o)
+                    }
+                    Err(e) => {
+                        format!("{}", e)
+                    }
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
             _ => {}
         }
     }
@@ -465,22 +493,22 @@ impl PageSub {
                                     }
                                 }
 
-                                if ui.button("value").clicked() {
-                                    use uhlc::ID;
-                                    use uuid::Uuid;
-
-                                    self.show_view_value_window = true;
-                                    self.view_value_window.key = "demo/example/test1".to_string();
-                                    self.view_value_window.value = Value::from("hello world");
-                                    let time: NTP64 = Duration::from_secs(100).into();
-                                    let buf = [
-                                        0x1a, 0x2b, 0x3c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                    ];
-                                    let id = ID::from(Uuid::new_v4());
-                                    self.view_value_window.timestamp =
-                                        Some(Timestamp::new(time, id));
-                                }
+                                // if ui.button("value").clicked() {
+                                //     use uhlc::ID;
+                                //     use uuid::Uuid;
+                                //
+                                //     self.show_view_value_window = true;
+                                //     self.view_value_window.key = "demo/example/test1".to_string();
+                                //     self.view_value_window.value = Value::from("hello world");
+                                //     let time: NTP64 = Duration::from_secs(100).into();
+                                //     let buf = [
+                                //         0x1a, 0x2b, 0x3c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                //         0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                //     ];
+                                //     let id = ID::from(Uuid::new_v4());
+                                //     self.view_value_window.timestamp =
+                                //         Some(Timestamp::new(time, id));
+                                // }
                             });
                         });
 
@@ -617,7 +645,11 @@ impl PageSub {
                                             }
                                         }
                                         KnownEncoding::AppJson => {
-                                            ui.label("...");
+                                            let text: RichText = json_create_rich_text(d);
+                                            if ui.button(text).clicked() {
+                                                self.show_view_value_window = true;
+                                                self.view_value_window.clone_from(d, key, k, t);
+                                            }
                                         }
                                         KnownEncoding::AppInteger => {
                                             let text: RichText = i64_create_rich_text(d);
@@ -634,7 +666,11 @@ impl PageSub {
                                             }
                                         }
                                         KnownEncoding::TextJson => {
-                                            ui.label("...");
+                                            let text: RichText = json_create_rich_text(d);
+                                            if ui.button(text).clicked() {
+                                                self.show_view_value_window = true;
+                                                self.view_value_window.clone_from(d, key, k, t);
+                                            }
                                         }
                                         _ => {
                                             ui.label("...");

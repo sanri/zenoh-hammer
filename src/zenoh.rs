@@ -11,6 +11,14 @@ use zenoh::{
 pub(crate) type Sender<T> = flume::Sender<T>;
 pub(crate) type Receiver<T> = flume::Receiver<T>;
 
+pub struct PutData {
+    pub(crate) id: u64,
+    pub(crate) key: KeyExpr<'static>,
+    pub(crate) congestion_control: CongestionControl,
+    pub(crate) priority: Priority,
+    pub(crate) value: Value,
+}
+
 pub enum MsgGuiToZenoh {
     Close,
     AddSubReq(Box<(u64, KeyExpr<'static>)>), // (sub id,key)
@@ -19,7 +27,7 @@ pub enum MsgGuiToZenoh {
     AddPubReq,
     DelPubReq,
     PubReq,
-    PutReq(Box<Sample>),
+    PutReq(Box<PutData>),
 }
 
 pub enum MsgZenohToGui {
@@ -31,7 +39,7 @@ pub enum MsgZenohToGui {
     AddPubRes,
     DelPubRes,
     PubRes,
-    PutRes,
+    PutRes(Box<(u64, bool, String)>), // true 表示成功， false表示失败
 }
 
 pub fn start_async(
@@ -106,7 +114,22 @@ async fn loop_zenoh(
             MsgGuiToZenoh::AddPubReq => {}
             MsgGuiToZenoh::DelPubReq => {}
             MsgGuiToZenoh::PubReq => {}
-            MsgGuiToZenoh::PutReq(_) => {}
+            MsgGuiToZenoh::PutReq(p) => {
+                let pd = *p;
+                if let Err(e) = session
+                    .put(pd.key.clone(), pd.value)
+                    .congestion_control(pd.congestion_control)
+                    .priority(pd.priority)
+                    .res()
+                    .await
+                {
+                    let s = format!("{}", e);
+                    let _ = sender_to_gui.send(MsgZenohToGui::PutRes(Box::new((pd.id, false, s))));
+                } else {
+                    let s = format!("{} put succeed", pd.key);
+                    let _ = sender_to_gui.send(MsgZenohToGui::PutRes(Box::new((pd.id, true, s))));
+                }
+            }
         }
     } // loop 'a
 }

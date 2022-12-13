@@ -25,4 +25,10 @@ pub fn load_fonts() -> FontDefinitions {
         .push("JetBrainsMono-Medium".to_owned());
 
     fonts
+        .families
+        .get_mut(&FontFamily::Monospace)
+        .unwrap()
+        .push("wqy-microhei".to_owned());
+
+    fonts
 }
