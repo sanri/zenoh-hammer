@@ -26,6 +26,7 @@ pub enum Page {
 }
 
 pub struct HammerApp {
+    pixels_per_point: f32,
     language_changed: bool,
     sender_to_zenoh: Option<Sender<MsgGuiToZenoh>>,
     receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
@@ -40,6 +41,7 @@ pub struct HammerApp {
 impl Default for HammerApp {
     fn default() -> Self {
         HammerApp {
+            pixels_per_point: 2.0,
             language_changed: false,
             sender_to_zenoh: None,
             receiver_from_zenoh: None,
@@ -66,7 +68,7 @@ impl eframe::App for HammerApp {
 
 impl HammerApp {
     fn show_ui(&mut self, ctx: &Context, frame: &mut Frame) {
-        ctx.set_pixels_per_point(3.0);
+        ctx.set_pixels_per_point(self.pixels_per_point);
 
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -76,7 +78,7 @@ impl HammerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.selected_page {
             Page::Session => {
-                self.p_session.show(ui);
+                self.p_session.show(ctx, ui);
             }
             Page::Sub => {
                 self.p_sub.show(ctx, ui);
@@ -114,9 +116,45 @@ impl HammerApp {
                 ui.close_menu();
             }
 
-            if ui.add(egui::Button::new("使用说明")).clicked() {
-                ui.close_menu();
-            }
+            ui.menu_button("缩放界面", |ui| {
+                if ui.add(egui::Button::new("放大")).clicked() {
+                    self.pixels_per_point += 0.5;
+                    if self.pixels_per_point > 4.0 {
+                        self.pixels_per_point = 4.0
+                    }
+                    ui.close_menu();
+                }
+
+                if ui.add(egui::Button::new("缩小")).clicked() {
+                    self.pixels_per_point -= 0.5;
+                    if self.pixels_per_point < 1.0 {
+                        self.pixels_per_point = 1.0;
+                    }
+                    ui.close_menu();
+                }
+
+                ui.separator();
+
+                if ui.add(egui::Button::new("1.0")).clicked() {
+                    self.pixels_per_point = 1.0;
+                    ui.close_menu();
+                }
+
+                if ui.add(egui::Button::new("2.0")).clicked() {
+                    self.pixels_per_point = 2.0;
+                    ui.close_menu();
+                }
+
+                if ui.add(egui::Button::new("3.0")).clicked() {
+                    self.pixels_per_point = 3.0;
+                    ui.close_menu();
+                }
+
+                if ui.add(egui::Button::new("4.0")).clicked() {
+                    self.pixels_per_point = 4.0;
+                    ui.close_menu();
+                }
+            });
 
             ui.separator();
 

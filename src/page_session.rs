@@ -1,11 +1,85 @@
-use egui::{Align, Layout, ScrollArea};
+use egui::{
+    Align, CollapsingHeader, Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit,
+    TextStyle,
+};
 use serde_json;
-use std::collections::VecDeque;
-use zenoh::config::{Config, WhatAmI};
+use std::{collections::VecDeque, str::FromStr};
+use zenoh::{
+    config::{Config, EndPoint, WhatAmI},
+    Error,
+};
 
 pub enum Event {
     Connect(Box<Config>),
     Disconnect,
+}
+
+enum AEWKind {
+    Connect,
+    Listen,
+}
+
+struct AddEndpointWindow {
+    kind: AEWKind,
+    edit_str: String,
+    err_str: String,
+}
+
+impl Default for AddEndpointWindow {
+    fn default() -> Self {
+        AddEndpointWindow {
+            kind: AEWKind::Connect,
+            edit_str: String::new(),
+            err_str: String::new(),
+        }
+    }
+}
+
+impl AddEndpointWindow {
+    fn show(&mut self, ctx: &Context, is_open: &mut bool, ve: &mut Vec<EndPoint>) {
+        let window_name = match self.kind {
+            AEWKind::Connect => "Connect",
+            AEWKind::Listen => "Listen",
+        };
+        let window = egui::Window::new(window_name)
+            .id(Id::new("add endpoint window"))
+            .collapsible(false)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            let te = TextEdit::singleline(&mut self.edit_str).font(TextStyle::Monospace);
+            ui.add(te);
+
+            let rt = RichText::new(self.err_str.as_str()).color(Color32::RED);
+            ui.label(rt);
+
+            ui.horizontal(|ui| {
+                ui.label("                 ");
+
+                if ui.button("确定").clicked() {
+                    match EndPoint::from_str(self.edit_str.as_str()) {
+                        Ok(o) => {
+                            ve.push(o);
+                            *is_open = false;
+                            self.edit_str.clear();
+                        }
+                        Err(e) => {
+                            self.err_str = format!("{}", e);
+                        }
+                    };
+                }
+
+                ui.label("  ");
+
+                if ui.button("取消").clicked() {
+                    *is_open = false;
+                    self.edit_str.clear();
+                }
+            });
+        });
+    }
 }
 
 pub struct PageSession {
@@ -13,6 +87,8 @@ pub struct PageSession {
     zenoh_config: Config,
     config_json: String,
     pub connected: bool,
+    show_add_endpoint_window: bool,
+    add_endpoint_window: AddEndpointWindow,
 }
 
 impl Default for PageSession {
@@ -24,12 +100,14 @@ impl Default for PageSession {
             zenoh_config: config,
             config_json: format!("{:#}", json),
             connected: false,
+            show_add_endpoint_window: false,
+            add_endpoint_window: AddEndpointWindow::default(),
         }
     }
 }
 
 impl PageSession {
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             ui.vertical(|ui| {
                 if self.connected {
@@ -44,7 +122,7 @@ impl PageSession {
                 }
 
                 ScrollArea::vertical().id_source("1").show(ui, |ui| {
-                    self.show_config_edit(ui);
+                    self.show_config_edit(ctx, ui);
                 });
             });
 
@@ -66,43 +144,105 @@ impl PageSession {
 
                 ScrollArea::vertical().id_source("3").show(ui, |ui| {
                     ui.add(
-                        egui::TextEdit::multiline(&mut self.config_json)
+                        TextEdit::multiline(&mut self.config_json)
                             .desired_width(f32::INFINITY)
                             .code_editor(),
                     )
                 });
             });
         });
+
+        if self.show_add_endpoint_window {
+            let ve = match self.add_endpoint_window.kind {
+                AEWKind::Connect => &mut self.zenoh_config.connect.endpoints,
+                AEWKind::Listen => &mut self.zenoh_config.listen.endpoints,
+            };
+            self.add_endpoint_window
+                .show(ctx, &mut self.show_add_endpoint_window, ve);
+        }
     }
 
-    fn show_config_edit(&mut self, ui: &mut egui::Ui) {
-        let mut show_set_mode_ui = |ui: &mut egui::Ui| {
-            ui.label("mode").on_hover_text("节点模式");
-            let mode_select_str = match self.zenoh_config.mode() {
-                None => "",
-                Some(m) => m.to_str(),
-            };
-            egui::ComboBox::new("mode", "")
-                .selected_text(mode_select_str)
-                .show_ui(ui, |ui| {
-                    let what_am_i = [WhatAmI::Client, WhatAmI::Peer];
-                    for wai in what_am_i {
-                        if ui
-                            .selectable_label(self.zenoh_config.mode() == &Some(wai), wai.to_str())
-                            .clicked()
-                        {
-                            let _ = self.zenoh_config.set_mode(Some(wai));
-                        }
-                    }
-                });
-            ui.end_row();
-        };
+    fn show_config_edit(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+        let rt_add = RichText::new("+").monospace();
+        let rt_del = RichText::new("-").monospace();
 
-        egui::Grid::new("config_grid")
-            .num_columns(2)
-            .striped(true)
+        CollapsingHeader::new("mode")
+            .id_source("config mode")
+            .default_open(true)
             .show(ui, |ui| {
-                show_set_mode_ui(ui);
+                let mode_select_str = match self.zenoh_config.mode() {
+                    None => "",
+                    Some(m) => m.to_str(),
+                };
+                egui::ComboBox::new("mode", "")
+                    .selected_text(mode_select_str)
+                    .show_ui(ui, |ui| {
+                        let what_am_i = [WhatAmI::Client, WhatAmI::Peer];
+                        for wai in what_am_i {
+                            if ui
+                                .selectable_label(
+                                    self.zenoh_config.mode() == &Some(wai),
+                                    wai.to_str(),
+                                )
+                                .clicked()
+                            {
+                                let _ = self.zenoh_config.set_mode(Some(wai));
+                            }
+                        }
+                    });
+            });
+
+        CollapsingHeader::new("connect")
+            .id_source("config connect")
+            .default_open(true)
+            .show(ui, |ui| {
+                if ui.button(rt_add.clone()).clicked() {
+                    self.show_add_endpoint_window = true;
+                    self.add_endpoint_window.kind = AEWKind::Connect;
+                }
+
+                let mut remove_index: Option<usize> = None;
+                let mut index = 0;
+                for ed in &self.zenoh_config.connect.endpoints {
+                    ui.horizontal(|ui| {
+                        if ui.button(rt_del.clone()).clicked() {
+                            remove_index = Some(index);
+                        }
+                        let rt = RichText::new(format!("{}", ed)).monospace();
+                        ui.label(rt);
+                    });
+                    index += 1;
+                }
+
+                if let Some(i) = remove_index {
+                    let _ = self.zenoh_config.connect.endpoints.remove(i);
+                }
+            });
+
+        CollapsingHeader::new("listen")
+            .id_source("config listen")
+            .default_open(true)
+            .show(ui, |ui| {
+                if ui.button(rt_add.clone()).clicked() {
+                    self.show_add_endpoint_window = true;
+                    self.add_endpoint_window.kind = AEWKind::Listen;
+                }
+
+                let mut remove_index: Option<usize> = None;
+                let mut index = 0;
+                for ed in &self.zenoh_config.listen.endpoints {
+                    ui.horizontal(|ui| {
+                        if ui.button(rt_del.clone()).clicked() {
+                            remove_index = Some(index);
+                        }
+                        let rt = RichText::new(format!("{}", ed)).monospace();
+                        ui.label(rt);
+                    });
+                    index += 1;
+                }
+                if let Some(i) = remove_index {
+                    let _ = self.zenoh_config.listen.endpoints.remove(i);
+                }
             });
     }
 }
