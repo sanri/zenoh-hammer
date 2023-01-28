@@ -7,3 +7,5 @@ target/
 # Added by cargo
 
 /target
+
+*.svg

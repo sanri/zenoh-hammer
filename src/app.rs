@@ -21,7 +21,7 @@ pub enum Page {
     Session,
     Sub,
     Get,
-    Pub,
+    // Pub,
     Put,
 }
 
@@ -34,7 +34,7 @@ pub struct HammerApp {
     p_session: PageSession,
     p_sub: PageSub,
     p_get: PageGet,
-    p_pub: PagePub,
+    // p_pub: PagePub,
     p_put: PagePut,
 }
 
@@ -49,7 +49,7 @@ impl Default for HammerApp {
             p_session: PageSession::default(),
             p_sub: PageSub::default(),
             p_get: PageGet::default(),
-            p_pub: PagePub::default(),
+            // p_pub: PagePub::default(),
             p_put: PagePut::default(),
         }
     }
@@ -88,10 +88,9 @@ impl HammerApp {
             }
             Page::Get => {
                 self.p_get.show(ui);
-            }
-            Page::Pub => {
-                self.p_pub.show(ui);
-            }
+            } // Page::Pub => {
+              //     self.p_pub.show(ui);
+              // }
         });
     }
 

@@ -560,7 +560,7 @@ impl PageSub {
 
     fn show_subscribers(&mut self, ui: &mut Ui) {
         ScrollArea::both()
-            .max_width(100.0)
+            .max_width(160.0)
             .auto_shrink([true, false])
             .show(ui, |ui| {
                 let mut clicked = false;

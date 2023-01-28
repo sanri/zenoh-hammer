@@ -43,30 +43,7 @@ impl Default for Data {
 impl Data {
     fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
         ui.vertical(|ui| {
-            let mut input_grid = |ui: &mut Ui| {
-                ui.label("name: ");
-                let te = TextEdit::singleline(&mut self.name).font(TextStyle::Monospace);
-                ui.add(te);
-                ui.end_row();
-
-                ui.label("key: ");
-                let te = TextEdit::singleline(&mut self.input_key).font(TextStyle::Monospace);
-                ui.add(te);
-
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("发送").clicked() {
-                        self.send(events);
-                    }
-                });
-                ui.end_row();
-            };
-            egui::Grid::new("input_grid")
-                .num_columns(2)
-                .striped(false)
-                .show(ui, |ui| {
-                    input_grid(ui);
-                });
-
+            self.show_name_key(events, ui);
             self.show_options(ui);
 
             ui.label("value: ");
@@ -112,6 +89,39 @@ impl Data {
                     };
                 });
         });
+    }
+    fn show_name_key(&mut self, events: &mut VecDeque<Event>, ui: &mut Ui) {
+        let mut input_grid = |ui: &mut Ui| {
+            ui.label(" ");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.button("发送").clicked() {
+                    self.send(events);
+                }
+            });
+            ui.end_row();
+
+            ui.label("name: ");
+            let te = TextEdit::singleline(&mut self.name)
+                .desired_width(600.0)
+                .font(TextStyle::Monospace);
+            ui.add(te);
+            ui.end_row();
+
+            ui.label("key: ");
+            let te = TextEdit::multiline(&mut self.input_key)
+                .desired_rows(2)
+                .desired_width(600.0)
+                .font(TextStyle::Monospace);
+            ui.add(te);
+
+            ui.end_row();
+        };
+        egui::Grid::new("input_grid")
+            .num_columns(2)
+            .striped(false)
+            .show(ui, |ui| {
+                input_grid(ui);
+            });
     }
 
     fn show_options(&mut self, ui: &mut Ui) {
@@ -185,7 +195,8 @@ impl Data {
     }
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
-        let key: KeyExpr = match KeyExpr::from_str(self.input_key.as_str()) {
+        let key_str = self.input_key.replace(&[' ', '\t', '\n', '\r'], "");
+        let key: KeyExpr = match KeyExpr::from_str(key_str.as_str()) {
             Ok(o) => o,
             Err(e) => {
                 let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -272,34 +283,7 @@ impl Default for PagePut {
 impl PagePut {
     pub fn show(&mut self, ui: &mut Ui) {
         ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    if ui.button(RichText::new(" + ").code()).clicked() {
-                        self.data_id_count += 1;
-                        let data = Data {
-                            id: self.data_id_count,
-                            ..Data::default()
-                        };
-                        self.data_map.insert(self.data_id_count, data);
-                    };
-
-                    if ui.button(RichText::new(" - ").code()).clicked() {
-                        if self.data_map.len() < 2 {
-                            return;
-                        }
-
-                        let _ = self.data_map.remove(&self.selected_data);
-                        for (k, _) in &self.data_map {
-                            self.selected_data = *k;
-                            break;
-                        }
-                    };
-                });
-
-                ui.label("");
-
-                self.show_puts(ui);
-            });
+            self.show_puts(ui);
 
             ui.separator();
 
@@ -315,14 +299,41 @@ impl PagePut {
     }
 
     fn show_puts(&mut self, ui: &mut Ui) {
-        ScrollArea::both()
-            .max_width(100.0)
-            .auto_shrink([true, false])
-            .show(ui, |ui| {
-                for (i, d) in &self.data_map {
-                    let text = RichText::new(d.name.clone()).monospace();
-                    ui.selectable_value(&mut self.selected_data, *i, text);
-                }
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(" + ").code()).clicked() {
+                    self.data_id_count += 1;
+                    let data = Data {
+                        id: self.data_id_count,
+                        ..Data::default()
+                    };
+                    self.data_map.insert(self.data_id_count, data);
+                };
+
+                if ui.button(RichText::new(" - ").code()).clicked() {
+                    if self.data_map.len() < 2 {
+                        return;
+                    }
+
+                    let _ = self.data_map.remove(&self.selected_data);
+                    for (k, _) in &self.data_map {
+                        self.selected_data = *k;
+                        break;
+                    }
+                };
             });
+
+            ui.label("");
+
+            ScrollArea::both()
+                .max_width(160.0)
+                .auto_shrink([true, false])
+                .show(ui, |ui| {
+                    for (i, d) in &self.data_map {
+                        let text = RichText::new(d.name.clone()).monospace();
+                        ui.selectable_value(&mut self.selected_data, *i, text);
+                    }
+                });
+        });
     }
 }
