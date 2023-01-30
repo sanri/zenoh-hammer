@@ -1,8 +1,9 @@
 use egui::{Align, DragValue, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui};
 use std::collections::BTreeMap;
-use zenoh::prelude::{QueryConsolidation, QueryTarget, Value};
-use zenoh::query::Mode::Auto;
-use zenoh::query::{ConsolidationMode, Mode};
+use zenoh::{
+    prelude::{Encoding, KnownEncoding, QueryConsolidation, QueryTarget, Value},
+    query::{ConsolidationMode, Mode},
+};
 
 pub struct Data {
     id: u64,
@@ -11,6 +12,8 @@ pub struct Data {
     selected_target: QueryTarget,
     selected_consolidation: QueryConsolidation,
     timeout: u64,
+    edit_str: String,
+    selected_encoding: KnownEncoding,
     query_value: Option<Value>,
 }
 
@@ -22,7 +25,9 @@ impl Default for Data {
             input_key: "demo/test".to_string(),
             selected_target: Default::default(),
             selected_consolidation: Default::default(),
-            timeout: 1000,
+            timeout: 10000,
+            edit_str: String::new(),
+            selected_encoding: KnownEncoding::Empty,
             query_value: None,
         }
     }
@@ -118,6 +123,28 @@ impl Data {
                 .clamp_range(0..=10000);
             ui.add(dv);
             ui.end_row();
+
+            ui.label("query payload: ");
+            egui::ComboBox::new("query payload", "")
+                .selected_text(format!("{}", Encoding::Exact(self.selected_encoding)))
+                .show_ui(ui, |ui| {
+                    let options = [
+                        KnownEncoding::Empty,
+                        KnownEncoding::TextPlain,
+                        KnownEncoding::TextJson,
+                        KnownEncoding::AppJson,
+                        KnownEncoding::AppInteger,
+                        KnownEncoding::AppFloat,
+                    ];
+                    for option in options {
+                        ui.selectable_value(
+                            &mut self.selected_encoding,
+                            option,
+                            format!("{}", Encoding::Exact(option)),
+                        );
+                    }
+                });
+            ui.end_row();
         };
 
         egui::Grid::new("options_grid")
@@ -125,6 +152,43 @@ impl Data {
             .striped(false)
             .show(ui, |ui| {
                 show_grid(ui);
+            });
+
+        ScrollArea::vertical()
+            .id_source("value scroll area")
+            .show(ui, |ui| match self.selected_encoding {
+                KnownEncoding::Empty => {}
+                KnownEncoding::TextPlain => {
+                    ui.add(
+                        TextEdit::multiline(&mut self.edit_str)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(3)
+                            .code_editor(),
+                    );
+                }
+                KnownEncoding::AppJson => {
+                    ui.add(
+                        TextEdit::multiline(&mut self.edit_str)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(3)
+                            .code_editor(),
+                    );
+                }
+                KnownEncoding::AppInteger => {
+                    ui.add(TextEdit::singleline(&mut self.edit_str));
+                }
+                KnownEncoding::AppFloat => {
+                    ui.add(TextEdit::singleline(&mut self.edit_str));
+                }
+                KnownEncoding::TextJson => {
+                    ui.add(
+                        TextEdit::multiline(&mut self.edit_str)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(3)
+                            .code_editor(),
+                    );
+                }
+                _ => {}
             });
     }
 }
