@@ -10,7 +10,7 @@ egui = { version = "0.20" }
 egui_extras = { version = "0.20" }
 eframe = { version = "0.20", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 tracing-subscriber = "0.3"
-zenoh = { version = "0.7.0-rc" }
+zenoh = { version = "0.7.0-rc", features = [ "default", "unstable" ] }
 async-std = { version = "=1.12", default-features = false }
 futures = "0.3"
 flume = "0.10"

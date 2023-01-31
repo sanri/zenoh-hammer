@@ -43,63 +43,18 @@ impl Default for Data {
 impl Data {
     fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
         ui.vertical(|ui| {
-            self.show_name_key(events, ui);
-            self.show_options(ui);
-
-            ui.label("value: ");
-            ScrollArea::vertical()
-                .id_source("value scroll area")
-                .show(ui, |ui| {
-                    match self.selected_encoding {
-                        KnownEncoding::TextPlain => {
-                            ui.add(
-                                TextEdit::multiline(&mut self.edit_str)
-                                    .desired_width(f32::INFINITY)
-                                    .desired_rows(3)
-                                    .code_editor(),
-                            );
-                        }
-                        KnownEncoding::AppJson => {
-                            ui.add(
-                                TextEdit::multiline(&mut self.edit_str)
-                                    .desired_width(f32::INFINITY)
-                                    .desired_rows(3)
-                                    .code_editor(),
-                            );
-                        }
-                        KnownEncoding::AppInteger => {
-                            ui.add(TextEdit::singleline(&mut self.edit_str));
-                        }
-                        KnownEncoding::AppFloat => {
-                            ui.add(TextEdit::singleline(&mut self.edit_str));
-                        }
-                        KnownEncoding::TextJson => {
-                            ui.add(
-                                TextEdit::multiline(&mut self.edit_str)
-                                    .desired_width(f32::INFINITY)
-                                    .desired_rows(3)
-                                    .code_editor(),
-                            );
-                        }
-                        _ => {}
-                    }
-
-                    if let Some(rt) = &self.info {
-                        ui.label(rt.clone());
-                    };
-                });
-        });
-    }
-    fn show_name_key(&mut self, events: &mut VecDeque<Event>, ui: &mut Ui) {
-        let mut input_grid = |ui: &mut Ui| {
-            ui.label(" ");
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 if ui.button("发送").clicked() {
                     self.send(events);
                 }
             });
-            ui.end_row();
 
+            self.show_name_key(events, ui);
+            self.show_options(ui);
+        });
+    }
+    fn show_name_key(&mut self, events: &mut VecDeque<Event>, ui: &mut Ui) {
+        let mut input_grid = |ui: &mut Ui| {
             ui.label("name: ");
             let te = TextEdit::singleline(&mut self.name)
                 .desired_width(600.0)
@@ -191,6 +146,49 @@ impl Data {
             .striped(false)
             .show(ui, |ui| {
                 show_grid(ui);
+            });
+
+        ui.label("value: ");
+        ScrollArea::vertical()
+            .id_source("value scroll area")
+            .show(ui, |ui| {
+                match self.selected_encoding {
+                    KnownEncoding::TextPlain => {
+                        ui.add(
+                            TextEdit::multiline(&mut self.edit_str)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(3)
+                                .code_editor(),
+                        );
+                    }
+                    KnownEncoding::AppJson => {
+                        ui.add(
+                            TextEdit::multiline(&mut self.edit_str)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(3)
+                                .code_editor(),
+                        );
+                    }
+                    KnownEncoding::AppInteger => {
+                        ui.add(TextEdit::singleline(&mut self.edit_str));
+                    }
+                    KnownEncoding::AppFloat => {
+                        ui.add(TextEdit::singleline(&mut self.edit_str));
+                    }
+                    KnownEncoding::TextJson => {
+                        ui.add(
+                            TextEdit::multiline(&mut self.edit_str)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(3)
+                                .code_editor(),
+                        );
+                    }
+                    _ => {}
+                }
+
+                if let Some(rt) = &self.info {
+                    ui.label(rt.clone());
+                };
             });
     }
 
