@@ -1,6 +1,6 @@
 use crate::page_get::PageGet;
 use crate::page_pub::PagePub;
-use crate::page_put::{Event, PagePut};
+use crate::page_put::PagePut;
 use crate::page_session::PageSession;
 use crate::page_sub::{DataSubKeyGroup, DataSubValue, PageSub};
 use crate::zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender};
@@ -61,6 +61,7 @@ impl eframe::App for HammerApp {
         self.processing_page_session_events();
         self.processing_page_sub_events();
         self.processing_page_put_events();
+        self.processing_page_get_events();
         self.show_ui(ctx, frame);
         ctx.request_repaint();
     }
@@ -87,10 +88,8 @@ impl HammerApp {
                 self.p_put.show(ui);
             }
             Page::Get => {
-                self.p_get.show(ui);
-            } // Page::Pub => {
-              //     self.p_pub.show(ui);
-              // }
+                self.p_get.show(ctx, ui);
+            }
         });
     }
 
@@ -219,37 +218,16 @@ impl HammerApp {
                 }
                 MsgZenohToGui::AddSubRes(_) => {}
                 MsgZenohToGui::DelSubRes(id) => {
-                    let _ = self.p_sub.key_group.remove(&id);
+                    self.p_sub.processing_del_sub_res(id);
                 }
                 MsgZenohToGui::SubCB(d) => {
-                    let (id, data): (u64, Sample) = *d;
-                    let key = data.key_expr.as_str();
-
-                    if let Some(skg) = self.p_sub.key_group.get_mut(&id) {
-                        if let Some(sv) = skg.map.get_mut(key) {
-                            sv.add_data((data.value, data.kind, data.timestamp));
-                        } else {
-                            println!("new key: {}", key);
-                            let mut sv = DataSubValue::default();
-                            sv.add_data((data.value, data.kind, data.timestamp));
-                            let _ = skg.map.insert(key.to_string(), sv);
-                            self.p_sub.new_sub_key_flag = true;
-                        }
-                    }
+                    self.p_sub.processing_sub_cb(d);
                 }
-                MsgZenohToGui::GetRes(_) => {}
-                MsgZenohToGui::AddPubRes => {}
-                MsgZenohToGui::DelPubRes => {}
-                MsgZenohToGui::PubRes => {}
+                MsgZenohToGui::GetRes(r) => {
+                    self.p_get.processing_get_res(r);
+                }
                 MsgZenohToGui::PutRes(r) => {
-                    let (id, b, s) = *r;
-                    if let Some(pd) = self.p_put.data_map.get_mut(&id) {
-                        pd.info = if b {
-                            Some(RichText::new(s))
-                        } else {
-                            Some(RichText::new(s).color(Color32::RED))
-                        }
-                    }
+                    self.p_put.processing_put_res(r);
                 }
             }
         }
@@ -309,9 +287,21 @@ impl HammerApp {
     fn processing_page_put_events(&mut self) {
         while let Some(event) = self.p_put.events.pop_front() {
             match event {
-                Event::Put(p) => {
+                crate::page_put::Event::Put(p) => {
                     if let Some(sender) = &self.sender_to_zenoh {
                         let _ = sender.send(MsgGuiToZenoh::PutReq(p));
+                    }
+                }
+            }
+        }
+    }
+
+    fn processing_page_get_events(&mut self) {
+        while let Some(event) = self.p_get.events.pop_front() {
+            match event {
+                crate::page_get::Event::Get(p) => {
+                    if let Some(sender) = &self.sender_to_zenoh {
+                        let _ = sender.send(MsgGuiToZenoh::GetReq(p));
                     }
                 }
             }

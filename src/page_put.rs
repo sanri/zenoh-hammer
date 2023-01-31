@@ -7,7 +7,7 @@ use std::{
     str::FromStr,
 };
 use zenoh::prelude::{
-    CongestionControl, Encoding, KeyExpr, KnownEncoding, Priority, SampleKind, Value,
+    CongestionControl, Encoding, KeyExpr, KnownEncoding, OwnedKeyExpr, Priority, SampleKind, Value,
 };
 
 pub enum Event {
@@ -194,7 +194,7 @@ impl Data {
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
         let key_str = self.input_key.replace(&[' ', '\t', '\n', '\r'], "");
-        let key: KeyExpr = match KeyExpr::from_str(key_str.as_str()) {
+        let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_str.as_str()) {
             Ok(o) => o,
             Err(e) => {
                 let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -333,5 +333,16 @@ impl PagePut {
                     }
                 });
         });
+    }
+
+    pub fn processing_put_res(&mut self, r: Box<(u64, bool, String)>) {
+        let (id, b, s) = *r;
+        if let Some(pd) = self.data_map.get_mut(&id) {
+            pd.info = if b {
+                Some(RichText::new(s))
+            } else {
+                Some(RichText::new(s).color(Color32::RED))
+            }
+        }
     }
 }

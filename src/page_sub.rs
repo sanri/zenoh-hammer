@@ -11,9 +11,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     time::{Duration, SystemTime},
 };
-use zenoh::prelude::SplitBuffer;
 use zenoh::{
-    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, SampleKind, Value},
+    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, Sample, SampleKind, SplitBuffer, Value},
     time::{Timestamp, NTP64},
 };
 
@@ -699,6 +698,27 @@ impl PageSub {
                     }
                 }
             });
+    }
+
+    pub fn processing_sub_cb(&mut self, d: Box<(u64, Sample)>) {
+        let (id, data): (u64, Sample) = *d;
+        let key = data.key_expr.as_str();
+
+        if let Some(skg) = self.key_group.get_mut(&id) {
+            if let Some(sv) = skg.map.get_mut(key) {
+                sv.add_data((data.value, data.kind, data.timestamp));
+            } else {
+                println!("new key: {}", key);
+                let mut sv = DataSubValue::default();
+                sv.add_data((data.value, data.kind, data.timestamp));
+                let _ = skg.map.insert(key.to_string(), sv);
+                self.new_sub_key_flag = true;
+            }
+        }
+    }
+
+    pub fn processing_del_sub_res(&mut self, id: u64) {
+        let _ = self.key_group.remove(&id);
     }
 }
 

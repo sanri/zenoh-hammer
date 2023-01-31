@@ -1,4 +1,7 @@
-use egui::{Align, Color32, DragValue, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui};
+use crate::zenoh::QueryData;
+use egui::{
+    Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui,
+};
 use egui_extras::{Column, TableBuilder};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -8,20 +11,14 @@ use std::{
 use zenoh::{
     prelude::{
         Encoding, KeyExpr, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget,
-        Value,
+        Sample, Value,
     },
     query::{ConsolidationMode, Mode, Reply},
 };
 
 // query
-pub struct Event {
-    id: u64,
-    key_expr: OwnedKeyExpr,
-    target: QueryTarget,
-    consolidation: QueryConsolidation,
-    locality: Locality,
-    timeout: Duration,
-    value: Option<Value>,
+pub enum Event {
+    Get(Box<QueryData>),
 }
 
 pub struct Data {
@@ -41,7 +38,7 @@ pub struct Data {
 impl Default for Data {
     fn default() -> Self {
         Data {
-            id: 0,
+            id: 1,
             name: "demo".to_string(),
             input_key: "demo/test".to_string(),
             selected_target: QueryTarget::default(),
@@ -57,7 +54,7 @@ impl Default for Data {
 }
 
 impl Data {
-    fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
+    fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>, show_window: &mut bool) {
         ui.vertical(|ui| {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 if ui.button("发送").clicked() {
@@ -67,12 +64,19 @@ impl Data {
 
             self.show_name_key(ui);
             self.show_options(ui);
+
             ui.separator();
+
             if let Some(rt) = &self.info {
                 ui.label(rt.clone());
                 return;
             };
-            self.show_reply(ui);
+
+            ScrollArea::horizontal()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    self.show_reply(ui, show_window);
+                });
         });
     }
 
@@ -234,7 +238,7 @@ impl Data {
         };
     }
 
-    fn show_reply(&mut self, ui: &mut Ui) {
+    fn show_reply(&mut self, ui: &mut Ui, show_window: &mut bool) {
         if self.replies.is_empty() {
             return;
         }
@@ -242,25 +246,50 @@ impl Data {
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
-            .column(
-                Column::initial(40.0)
-                    .range(40.0..=160.0)
-                    .resizable(true)
-                    .clip(true),
-            )
+            .column(Column::initial(100.0).resizable(true).clip(true))
             .column(Column::remainder())
             .resizable(true);
 
         table
             .header(20.0, |mut header| {
                 header.col(|ui| {
-                    ui.label("value");
-                });
-                header.col(|ui| {
                     ui.label("key");
                 });
+                header.col(|ui| {
+                    ui.label("info");
+                });
             })
-            .body(|mut body| {});
+            .body(|mut body| {
+                for reply in &self.replies {
+                    body.row(20.0, |mut row| {
+                        match &reply.sample {
+                            Ok(o) => {
+                                let text = o.key_expr.to_string();
+                                row.col(|ui| {
+                                    ui.label(text);
+                                });
+                                row.col(|ui| {
+                                    if ui.button("...").clicked() {
+                                        *show_window = true;
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                let text = String::try_from(e).unwrap();
+                                let text = RichText::new(text).size(12.0).color(Color32::RED);
+                                row.col(|ui| {
+                                    ui.label(text);
+                                });
+                                row.col(|ui| {
+                                    if ui.button("...").clicked() {
+                                        *show_window = true;
+                                    }
+                                });
+                            }
+                        };
+                    })
+                }
+            });
     }
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
@@ -324,7 +353,7 @@ impl Data {
             }
             _ => None,
         };
-        let e = Event {
+        let d = QueryData {
             id: self.id,
             key_expr: key,
             target: self.selected_target,
@@ -333,7 +362,34 @@ impl Data {
             timeout: Duration::from_millis(self.timeout),
             value: v,
         };
-        events.push_back(e);
+        events.push_back(Event::Get(Box::new(d)));
+    }
+}
+
+struct ViewReplyWindow {
+    reply: Option<Reply>,
+}
+
+impl Default for ViewReplyWindow {
+    fn default() -> Self {
+        ViewReplyWindow { reply: None }
+    }
+}
+
+impl ViewReplyWindow {
+    fn show(&mut self, ctx: &Context, is_open: &mut bool) {
+        let window = egui::Window::new("Info")
+            .id(Id::new("view reply window"))
+            .collapsible(false)
+            .scroll2([true, true])
+            .open(is_open)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            ui.label("hello");
+        });
     }
 }
 
@@ -342,6 +398,8 @@ pub struct PageGet {
     pub data_map: BTreeMap<u64, Data>,
     selected_data: u64,
     data_id_count: u64,
+    show_view_reply_window: bool,
+    view_reply_window: ViewReplyWindow,
 }
 
 impl Default for PageGet {
@@ -353,12 +411,14 @@ impl Default for PageGet {
             data_map: btm,
             selected_data: 1,
             data_id_count: 1,
+            show_view_reply_window: false,
+            view_reply_window: ViewReplyWindow::default(),
         }
     }
 }
 
 impl PageGet {
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
         ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
             self.show_gets(ui);
 
@@ -371,7 +431,10 @@ impl PageGet {
                 Some(o) => o,
             };
 
-            data.show(ui, &mut self.events);
+            data.show(ui, &mut self.events, &mut self.show_view_reply_window);
+
+            self.view_reply_window
+                .show(ctx, &mut self.show_view_reply_window);
         });
     }
 
@@ -413,5 +476,13 @@ impl PageGet {
                     }
                 });
         });
+    }
+
+    pub fn processing_get_res(&mut self, res: Box<(u64, Reply)>) {
+        let (id, reply) = *res;
+        if let Some(d) = self.data_map.get_mut(&id) {
+            d.info = None;
+            d.replies.push(reply);
+        }
     }
 }

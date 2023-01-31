@@ -5,6 +5,7 @@ use std::{clone, collections::BTreeMap, sync::Arc, thread, time::Duration};
 
 use zenoh::{
     prelude::{r#async::*, Config, KeyExpr, Sample, Session},
+    query::Reply,
     subscriber::Subscriber,
 };
 
@@ -13,32 +14,36 @@ pub(crate) type Receiver<T> = flume::Receiver<T>;
 
 pub struct PutData {
     pub(crate) id: u64,
-    pub(crate) key: KeyExpr<'static>,
+    pub(crate) key: OwnedKeyExpr,
     pub(crate) congestion_control: CongestionControl,
     pub(crate) priority: Priority,
     pub(crate) value: Value,
+}
+
+pub struct QueryData {
+    pub(crate) id: u64,
+    pub(crate) key_expr: OwnedKeyExpr,
+    pub(crate) target: QueryTarget,
+    pub(crate) consolidation: QueryConsolidation,
+    pub(crate) locality: Locality,
+    pub(crate) timeout: Duration,
+    pub(crate) value: Option<Value>,
 }
 
 pub enum MsgGuiToZenoh {
     Close,
     AddSubReq(Box<(u64, KeyExpr<'static>)>), // (sub id,key)
     DelSubReq(u64),                          // sub id
-    GetReq(Box<KeyExpr<'static>>),
-    AddPubReq,
-    DelPubReq,
-    PubReq,
+    GetReq(Box<QueryData>),
     PutReq(Box<PutData>),
 }
 
 pub enum MsgZenohToGui {
-    OpenSession(bool),         // true 表示成功， false 表示失败
-    AddSubRes(u64),            // sub id
-    DelSubRes(u64),            // sub id
-    SubCB(Box<(u64, Sample)>), // (sub id, value)
-    GetRes(Box<Sample>),
-    AddPubRes,
-    DelPubRes,
-    PubRes,
+    OpenSession(bool),                // true 表示成功， false 表示失败
+    AddSubRes(u64),                   // sub id
+    DelSubRes(u64),                   // sub id
+    SubCB(Box<(u64, Sample)>),        // (sub id, value)
+    GetRes(Box<(u64, Reply)>),        // (get id, result)
     PutRes(Box<(u64, bool, String)>), // true 表示成功， false表示失败
 }
 
@@ -110,10 +115,9 @@ async fn loop_zenoh(
                 let _ = subscriber_senders.remove(&id);
                 let _ = sender_to_gui.send(MsgZenohToGui::DelSubRes(id));
             }
-            MsgGuiToZenoh::GetReq(_) => {}
-            MsgGuiToZenoh::AddPubReq => {}
-            MsgGuiToZenoh::DelPubReq => {}
-            MsgGuiToZenoh::PubReq => {}
+            MsgGuiToZenoh::GetReq(req) => {
+                task::spawn(task_query(session.clone(), req, sender_to_gui.clone()));
+            }
             MsgGuiToZenoh::PutReq(p) => {
                 let pd = *p;
                 if let Err(e) = session
@@ -158,4 +162,33 @@ async fn task_subscriber(
         );
     }
     println!("task_subscriber exit");
+}
+
+async fn task_query(
+    session: Arc<Session>,
+    data: Box<QueryData>,
+    sender_to_gui: Sender<MsgZenohToGui>,
+) {
+    println!("task_query entry");
+    let d = *data;
+    let replies = match d.value {
+        Some(v) => session.get(d.key_expr).with_value(v),
+        None => session.get(d.key_expr),
+    }
+    .target(d.target)
+    .timeout(d.timeout)
+    .consolidation(d.consolidation)
+    .allowed_destination(d.locality)
+    .res()
+    .await
+    .unwrap();
+
+    while let Ok(reply) = replies.recv_async().await {
+        let msg = MsgZenohToGui::GetRes(Box::new((d.id, reply)));
+        if let Err(e) = sender_to_gui.send(msg) {
+            println!("{}", e);
+        }
+    }
+
+    println!("task_query exit");
 }
