@@ -1,20 +1,99 @@
-use crate::zenoh::PutData;
 use eframe::emath::Align;
-use egui::{Color32, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui};
+use egui::{Color32, Context, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui};
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
     collections::{BTreeMap, VecDeque},
     str::FromStr,
 };
-use zenoh::prelude::{
-    CongestionControl, Encoding, KeyExpr, KnownEncoding, OwnedKeyExpr, Priority, SampleKind, Value,
-};
+use zenoh::prelude::{CongestionControl, Encoding, KnownEncoding, OwnedKeyExpr, Priority, Value};
+
+use crate::{app::ZenohValue, zenoh::PutData};
 
 pub enum Event {
     Put(Box<PutData>),
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ZCongestionControl {
+    Block,
+    Drop,
+}
+
+impl From<CongestionControl> for ZCongestionControl {
+    fn from(value: CongestionControl) -> Self {
+        match value {
+            CongestionControl::Block => ZCongestionControl::Block,
+            CongestionControl::Drop => ZCongestionControl::Drop,
+        }
+    }
+}
+
+impl Into<CongestionControl> for ZCongestionControl {
+    fn into(self) -> CongestionControl {
+        match self {
+            ZCongestionControl::Block => CongestionControl::Block,
+            ZCongestionControl::Drop => CongestionControl::Drop,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ZPriority {
+    RealTime,
+    InteractiveHigh,
+    InteractiveLow,
+    DataHigh,
+    Data,
+    DataLow,
+    Background,
+}
+
+impl From<Priority> for ZPriority {
+    fn from(value: Priority) -> Self {
+        match value {
+            Priority::RealTime => ZPriority::RealTime,
+            Priority::InteractiveHigh => ZPriority::InteractiveHigh,
+            Priority::InteractiveLow => ZPriority::InteractiveLow,
+            Priority::DataHigh => ZPriority::DataHigh,
+            Priority::Data => ZPriority::Data,
+            Priority::DataLow => ZPriority::DataLow,
+            Priority::Background => ZPriority::Background,
+        }
+    }
+}
+
+impl Into<Priority> for ZPriority {
+    fn into(self) -> Priority {
+        match self {
+            ZPriority::RealTime => Priority::RealTime,
+            ZPriority::InteractiveHigh => Priority::InteractiveHigh,
+            ZPriority::InteractiveLow => Priority::InteractiveLow,
+            ZPriority::DataHigh => Priority::DataHigh,
+            ZPriority::Data => Priority::Data,
+            ZPriority::DataLow => Priority::DataLow,
+            ZPriority::Background => Priority::Background,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DataItem {
+    name: String,
+    key: String,
+    congestion_control: ZCongestionControl,
+    priority: ZPriority,
+    value: ZenohValue,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Data {
+    puts: Vec<DataItem>,
+}
+
+pub struct PagePutData {
     id: u64,
     name: String,
     input_key: String,
@@ -25,9 +104,9 @@ pub struct Data {
     pub info: Option<RichText>,
 }
 
-impl Default for Data {
+impl Default for PagePutData {
     fn default() -> Self {
-        Data {
+        PagePutData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/example".to_string(),
@@ -40,20 +119,46 @@ impl Default for Data {
     }
 }
 
-impl Data {
+impl PagePutData {
+    fn from(data: &DataItem) -> PagePutData {
+        let (encoding, s) = data.value.to();
+        PagePutData {
+            id: 0,
+            name: data.name.clone(),
+            input_key: data.key.clone(),
+            selected_congestion_control: data.congestion_control.into(),
+            selected_priority: data.priority.into(),
+            selected_encoding: encoding,
+            edit_str: s,
+            info: None,
+        }
+    }
+
+    fn to(&self) -> DataItem {
+        let value = ZenohValue::from(self.selected_encoding, self.edit_str.clone());
+        DataItem {
+            name: self.name.clone(),
+            key: self.input_key.clone(),
+            congestion_control: self.selected_congestion_control.into(),
+            priority: self.selected_priority.into(),
+            value,
+        }
+    }
+
     fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
         ui.vertical(|ui| {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                if ui.button("发送").clicked() {
+                if ui.button("send").clicked() {
                     self.send(events);
                 }
             });
 
-            self.show_name_key(events, ui);
+            self.show_name_key(ui);
             self.show_options(ui);
         });
     }
-    fn show_name_key(&mut self, events: &mut VecDeque<Event>, ui: &mut Ui) {
+
+    fn show_name_key(&mut self, ui: &mut Ui) {
         let mut input_grid = |ui: &mut Ui| {
             ui.label("name: ");
             let te = TextEdit::singleline(&mut self.name)
@@ -260,32 +365,52 @@ impl Data {
 
 pub struct PagePut {
     pub events: VecDeque<Event>,
-    pub data_map: BTreeMap<u64, Data>,
-    selected_data: u64,
+    pub data_map: BTreeMap<u64, PagePutData>,
+    selected_data_id: u64,
     data_id_count: u64,
 }
 
 impl Default for PagePut {
     fn default() -> Self {
         let mut btm = BTreeMap::new();
-        btm.insert(1, Data::default());
+        btm.insert(1, PagePutData::default());
         PagePut {
             events: VecDeque::new(),
             data_map: btm,
-            selected_data: 1,
+            selected_data_id: 1,
             data_id_count: 1,
         }
     }
 }
 
 impl PagePut {
-    pub fn show(&mut self, ui: &mut Ui) {
-        ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
-            self.show_puts(ui);
+    pub fn load(&mut self, data: Data) {
+        self.clean_all_put_data();
 
-            ui.separator();
+        for d in data.puts {
+            let page_data = PagePutData::from(&d);
+            self.add_put_data(page_data);
+        }
+    }
 
-            let mut data = match self.data_map.get_mut(&self.selected_data) {
+    pub fn create_store_data(&self) -> Data {
+        let mut data = Vec::with_capacity(self.data_map.len());
+        for (_, d) in &self.data_map {
+            let data_item = d.to();
+            data.push(data_item);
+        }
+        Data { puts: data }
+    }
+
+    pub fn show(&mut self, ctx: &Context) {
+        egui::SidePanel::left("page_put_panel_left")
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.show_puts(ui);
+            });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
                 }
@@ -300,12 +425,7 @@ impl PagePut {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 if ui.button(RichText::new(" + ").code()).clicked() {
-                    self.data_id_count += 1;
-                    let data = Data {
-                        id: self.data_id_count,
-                        ..Data::default()
-                    };
-                    self.data_map.insert(self.data_id_count, data);
+                    self.add_put_data(PagePutData::default());
                 };
 
                 if ui.button(RichText::new(" - ").code()).clicked() {
@@ -313,11 +433,8 @@ impl PagePut {
                         return;
                     }
 
-                    let _ = self.data_map.remove(&self.selected_data);
-                    for (k, _) in &self.data_map {
-                        self.selected_data = *k;
-                        break;
-                    }
+                    let _ = self.data_map.remove(&self.selected_data_id);
+                    self.selected_data_id = 0;
                 };
             });
 
@@ -329,10 +446,22 @@ impl PagePut {
                 .show(ui, |ui| {
                     for (i, d) in &self.data_map {
                         let text = RichText::new(d.name.clone()).monospace();
-                        ui.selectable_value(&mut self.selected_data, *i, text);
+                        ui.selectable_value(&mut self.selected_data_id, *i, text);
                     }
                 });
         });
+    }
+
+    fn add_put_data(&mut self, mut data: PagePutData) {
+        self.data_id_count += 1;
+        data.id = self.data_id_count;
+        self.data_map.insert(self.data_id_count, data);
+        self.selected_data_id = self.data_id_count;
+    }
+
+    fn clean_all_put_data(&mut self) {
+        self.data_map.clear();
+        self.selected_data_id = 0;
     }
 
     pub fn processing_put_res(&mut self, r: Box<(u64, bool, String)>) {

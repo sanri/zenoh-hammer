@@ -1,10 +1,10 @@
 use async_std::task;
-use flume::{unbounded, RecvError, TryRecvError};
+use flume::{unbounded, TryRecvError};
 use futures::select;
-use std::{clone, collections::BTreeMap, sync::Arc, thread, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, thread, time::Duration};
 
 use zenoh::{
-    prelude::{r#async::*, Config, KeyExpr, Sample, Session},
+    prelude::{r#async::*, Config, Sample, Session},
     query::Reply,
     subscriber::Subscriber,
 };
@@ -32,19 +32,19 @@ pub struct QueryData {
 
 pub enum MsgGuiToZenoh {
     Close,
-    AddSubReq(Box<(u64, KeyExpr<'static>)>), // (sub id,key)
-    DelSubReq(u64),                          // sub id
+    AddSubReq(Box<(u64, OwnedKeyExpr)>), // (sub id,key)
+    DelSubReq(u64),                      // sub id
     GetReq(Box<QueryData>),
     PutReq(Box<PutData>),
 }
 
 pub enum MsgZenohToGui {
-    OpenSession(bool),                // true 表示成功， false 表示失败
-    AddSubRes(u64),                   // sub id
-    DelSubRes(u64),                   // sub id
-    SubCB(Box<(u64, Sample)>),        // (sub id, value)
-    GetRes(Box<(u64, Reply)>),        // (get id, result)
-    PutRes(Box<(u64, bool, String)>), // true 表示成功， false表示失败
+    OpenSession(bool),                         // true 表示成功， false 表示失败
+    AddSubRes(Box<(u64, Result<(), String>)>), // sub id, true 表示成功, false表示失败
+    DelSubRes(u64),                            // sub id
+    SubCB(Box<(u64, Sample)>),                 // (sub id, value)
+    GetRes(Box<(u64, Reply)>),                 // (get id, result)
+    PutRes(Box<(u64, bool, String)>),          // true 表示成功， false表示失败
 }
 
 pub fn start_async(
@@ -97,7 +97,14 @@ async fn loop_zenoh(
             MsgGuiToZenoh::AddSubReq(req) => {
                 let (id, key_expr) = *req;
                 let subscriber: Subscriber<Receiver<Sample>> =
-                    session.declare_subscriber(key_expr).res().await.unwrap();
+                    match session.declare_subscriber(key_expr).res().await {
+                        Ok(o) => o,
+                        Err(e) => {
+                            let _ = sender_to_gui
+                                .send(MsgZenohToGui::AddSubRes(Box::new((id, Err(e.to_string())))));
+                            return;
+                        }
+                    };
                 let (close_sender, close_receiver): (Sender<()>, Receiver<()>) = unbounded();
                 let _ = subscriber_senders.insert(id, close_sender);
                 task::spawn(task_subscriber(
@@ -106,7 +113,7 @@ async fn loop_zenoh(
                     close_receiver,
                     sender_to_gui.clone(),
                 ));
-                let _ = sender_to_gui.send(MsgZenohToGui::AddSubRes(id));
+                let _ = sender_to_gui.send(MsgZenohToGui::AddSubRes(Box::new((id, Ok(())))));
             }
             MsgGuiToZenoh::DelSubReq(id) => {
                 if let Some(sender) = subscriber_senders.get(&id) {
@@ -156,7 +163,7 @@ async fn task_subscriber(
                 }
             },
 
-            r = close_receiver.recv_async() =>{
+            _ = close_receiver.recv_async() =>{
                     break 'a;
             },
         );

@@ -4,10 +4,7 @@ use egui::{
 };
 use serde_json;
 use std::{collections::VecDeque, str::FromStr};
-use zenoh::{
-    config::{Config, EndPoint, WhatAmI},
-    Error,
-};
+use zenoh::config::{Config, EndPoint, WhatAmI};
 
 pub enum Event {
     Connect(Box<Config>),
@@ -107,35 +104,35 @@ impl Default for PageSession {
 }
 
 impl PageSession {
-    pub fn show(&mut self, ctx: &Context, ui: &mut egui::Ui) {
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-            ui.vertical(|ui| {
-                if self.connected {
-                    if ui.button("断开连接").clicked() {
-                        self.events.push_back(Event::Disconnect);
+    pub fn show(&mut self, ctx: &Context) {
+        egui::SidePanel::left("page_session_panel_left")
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    if self.connected {
+                        if ui.button("disconnect").clicked() {
+                            self.events.push_back(Event::Disconnect);
+                        }
+                    } else {
+                        if ui.button("connect").clicked() {
+                            self.events
+                                .push_back(Event::Connect(Box::new(self.zenoh_config.clone())));
+                        }
                     }
-                } else {
-                    if ui.button("建立连接").clicked() {
-                        self.events
-                            .push_back(Event::Connect(Box::new(self.zenoh_config.clone())));
-                    }
-                }
 
-                ScrollArea::vertical().id_source("1").show(ui, |ui| {
                     self.show_config_edit(ctx, ui);
                 });
             });
 
-            ui.separator();
-
+        egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(Layout::top_down(Align::Min), |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("标准格式").clicked() {
+                    if ui.button("pretty").clicked() {
                         let json: serde_json::Value =
                             serde_json::to_value(&self.zenoh_config).unwrap();
                         self.config_json = format!("{:#}", json);
                     };
-                    if ui.button("紧凑格式").clicked() {
+                    if ui.button("compact").clicked() {
                         let json: serde_json::Value =
                             serde_json::to_value(&self.zenoh_config).unwrap();
                         self.config_json = format!("{}", json);
@@ -162,7 +159,7 @@ impl PageSession {
         }
     }
 
-    fn show_config_edit(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+    fn show_config_edit(&mut self, _ctx: &Context, ui: &mut egui::Ui) {
         let rt_add = RichText::new("+").monospace();
         let rt_del = RichText::new("-").monospace();
 

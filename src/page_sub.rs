@@ -1,41 +1,461 @@
-use crate::app::{
-    f64_create_rich_text, i64_create_rich_text, json_create_rich_text, text_plant_create_rich_text,
-    VALUE_BUFFER_SIZE_DEFAULT,
-};
 use egui::{
-    vec2, Align, Button, CollapsingHeader, Color32, Context, Direction, DragValue, Id, Layout,
-    Resize, RichText, ScrollArea, SelectableLabel, TextEdit, TextStyle, Ui,
+    Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
+    TextEdit, TextStyle, Ui,
 };
-use egui_extras::{Column, Size, TableBuilder};
+use egui_extras::{Column, TableBody, TableBuilder};
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    time::{Duration, SystemTime},
+    collections::{BTreeMap, VecDeque},
+    str::FromStr,
 };
 use zenoh::{
-    prelude::{keyexpr, Encoding, KeyExpr, KnownEncoding, Sample, SampleKind, SplitBuffer, Value},
-    time::{Timestamp, NTP64},
+    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, Value},
+    sample::Sample,
+    time::Timestamp,
 };
 
+use crate::app::{
+    f64_create_rich_text, i64_create_rich_text, json_create_rich_text, text_plant_create_rich_text,
+};
+
+pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
+
 pub enum Event {
-    AddSub(u64, KeyExpr<'static>), // id, key expr
-    DelSub(u64),                   // id
+    AddSub(Box<(u64, OwnedKeyExpr)>), // id, key expr
+    DelSub(u64),                      // id
 }
 
-pub struct DataSubValue {
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct DataItem {
+    name: String,
+    key_expr: String,
+}
+
+// impl DataItem {
+//     fn new(name: String, key_expr: String) -> DataItem {
+//         DataItem { name, key_expr }
+//     }
+// }
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Data {
+    subscribers: Vec<DataItem>,
+}
+
+pub struct PageSub {
+    pub events: VecDeque<Event>,
+    sub_id_count: u64,
+    selected_sub_id: u64,
+    show_view_value_window: bool,
+    view_value_window: ViewValueWindow,
+    sub_data_group: BTreeMap<u64, PageSubData>, // <sub id, group>
+}
+
+impl Default for PageSub {
+    fn default() -> Self {
+        let mut p = PageSub {
+            events: VecDeque::new(),
+            sub_id_count: 0,
+            selected_sub_id: 1,
+            show_view_value_window: false,
+            view_value_window: ViewValueWindow::default(),
+            sub_data_group: BTreeMap::new(),
+        };
+        p.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
+        p
+    }
+}
+
+impl PageSub {
+    pub fn load(&mut self, data: Data) {
+        self.clean_all_sub_data();
+
+        for d in data.subscribers {
+            let page_data = PageSubData::from(&d);
+            self.add_sub_data(page_data);
+        }
+    }
+
+    pub fn create_store_data(&self) -> Data {
+        let mut data = Vec::with_capacity(self.sub_data_group.len());
+        for (_, d) in &self.sub_data_group {
+            let data_item = d.to();
+            data.push(data_item);
+        }
+        Data { subscribers: data }
+    }
+
+    pub fn show(&mut self, ctx: &Context) {
+        egui::SidePanel::left("page_sub_panel_left")
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.show_subscribers_name(ui);
+            });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.show_name_key(ui);
+
+            ui.separator();
+
+            ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
+                self.show_key_tree(ui);
+
+                ui.separator();
+
+                self.show_values(ui);
+            });
+        });
+
+        self.view_value_window
+            .show(ctx, &mut self.show_view_value_window);
+    }
+
+    fn add_sub_data(&mut self, data: PageSubData) {
+        self.sub_id_count += 1;
+        self.sub_data_group.insert(self.sub_id_count, data);
+        self.selected_sub_id = self.sub_id_count;
+    }
+
+    fn clean_all_sub_data(&mut self) {
+        self.sub_data_group.clear();
+        self.selected_sub_id = 0;
+    }
+
+    fn show_subscribers_name(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui.button(RichText::new(" + ").code()).clicked() {
+                self.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
+            }
+
+            if ui.button(RichText::new(" - ").code()).clicked() {
+                if self.sub_data_group.len() < 2 {
+                    return;
+                }
+
+                let mut flag = false;
+                if let Some(data_group) = self.sub_data_group.get(&self.selected_sub_id) {
+                    flag = !data_group.subscribed;
+                }
+                if flag {
+                    self.sub_data_group.remove(&self.selected_sub_id);
+                    self.selected_sub_id = 0;
+                }
+            }
+        });
+
+        ui.label(" ");
+
+        for (i, d) in &self.sub_data_group {
+            let s = if d.subscribed {
+                format!("* {}", d.name)
+            } else {
+                d.name.clone()
+            };
+            let text = RichText::new(s).monospace();
+            if ui
+                .selectable_label((*i) == self.selected_sub_id, text)
+                .clicked()
+            {
+                self.selected_sub_id = *i;
+            }
+        }
+    }
+
+    fn show_name_key(&mut self, ui: &mut Ui) {
+        let data_group = match self.sub_data_group.get_mut(&self.selected_sub_id) {
+            None => {
+                return;
+            }
+            Some(o) => o,
+        };
+
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("name:     ").monospace());
+            let te = TextEdit::singleline(&mut data_group.name)
+                .desired_width(600.0)
+                .font(TextStyle::Monospace)
+                .interactive(!data_group.subscribed);
+            ui.add(te);
+
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                if ui
+                    .selectable_label(data_group.subscribed, "declare")
+                    .clicked()
+                {
+                    if !data_group.subscribed {
+                        let key_expr_str =
+                            data_group.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
+
+                        if key_expr_str.is_empty() {
+                            let rt = format!("key expr is empty");
+                            data_group.err_str = Some(rt);
+                            return;
+                        }
+
+                        let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_expr_str.as_str())
+                        {
+                            Ok(o) => o,
+                            Err(e) => {
+                                data_group.err_str = Some(e.to_string());
+                                return;
+                            }
+                        };
+
+                        self.events
+                            .push_back(Event::AddSub(Box::new((self.selected_sub_id, key))));
+                    } else {
+                        self.events.push_back(Event::DelSub(self.selected_sub_id));
+                    }
+                    data_group.err_str = None;
+                    data_group.subscribed = !data_group.subscribed;
+                }
+            });
+        });
+
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("key expr: ").monospace());
+            let te = TextEdit::multiline(&mut data_group.key_expr)
+                .desired_width(600.0)
+                .desired_rows(1)
+                .font(TextStyle::Monospace)
+                .interactive(!data_group.subscribed);
+            ui.add(te);
+        });
+
+        if let Some(e) = &data_group.err_str {
+            ui.label(RichText::new(e).color(Color32::RED));
+        }
+    }
+
+    fn show_key_tree(&mut self, ui: &mut Ui) {
+        let data_group = match self.sub_data_group.get_mut(&self.selected_sub_id) {
+            None => {
+                return;
+            }
+            Some(o) => o,
+        };
+
+        data_group.update_tree();
+
+        ScrollArea::both()
+            .id_source("scroll_area_tree")
+            .max_width(200.0)
+            .min_scrolled_width(200.0)
+            // .min_scrolled_height(1000.0)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut data_group.filtered, "filter");
+                        ui.add(
+                            TextEdit::singleline(&mut data_group.filter_str)
+                                .code_editor()
+                                .interactive(data_group.filtered),
+                        );
+                    });
+
+                    data_group
+                        .key_tree
+                        .show_ui(&mut data_group.selected_key, ui);
+                });
+            });
+    }
+
+    fn show_values(&mut self, ui: &mut Ui) {
+        let data_group = match self.sub_data_group.get_mut(&self.selected_sub_id) {
+            None => {
+                return;
+            }
+            Some(o) => o,
+        };
+
+        let selected_key = data_group.selected_key.clone();
+
+        if let Some(dv) = data_group.map.get(&selected_key) {
+            data_group.buffer_size = dv.buffer_size as u32;
+        }
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                if ui.button("key:").on_hover_text("copy key").clicked() {
+                    todo!()
+                }
+                ui.label(RichText::new(&selected_key).monospace());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("clean").on_hover_text("clean buffer").clicked() {
+                        if let Some(dv) = data_group.map.get_mut(&selected_key) {
+                            dv.clear();
+                        }
+                    }
+                });
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(format!("buffer size: {}", data_group.buffer_size));
+                ui.label("   ");
+                let dv = DragValue::new(&mut data_group.buffer_size_tmp)
+                    .speed(10.0)
+                    .clamp_range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
+                ui.add(dv);
+                if ui.button("update buffer").clicked() {
+                    if let Some(data) = data_group.map.get_mut(&selected_key) {
+                        data.set_buffer_size(data_group.buffer_size_tmp as usize);
+                    }
+                }
+            });
+
+            let show_body = |mut body: TableBody| {
+                let key = &selected_key;
+                if let Some(sd) = data_group.map.get(selected_key.as_str()) {
+                    for (d, k, t) in &sd.deque {
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| match d.encoding {
+                                Encoding::Exact(ke) => match ke {
+                                    KnownEncoding::TextPlain => {
+                                        let text: RichText = text_plant_create_rich_text(d);
+                                        if ui.button(text).clicked() {
+                                            self.show_view_value_window = true;
+                                            self.view_value_window.clone_from(d, key, k, t);
+                                        }
+                                    }
+                                    KnownEncoding::AppJson => {
+                                        let text: RichText = json_create_rich_text(d);
+                                        if ui.button(text).clicked() {
+                                            self.show_view_value_window = true;
+                                            self.view_value_window.clone_from(d, key, k, t);
+                                        }
+                                    }
+                                    KnownEncoding::AppInteger => {
+                                        let text: RichText = i64_create_rich_text(d);
+                                        if ui.button(text).clicked() {
+                                            self.show_view_value_window = true;
+                                            self.view_value_window.clone_from(d, key, k, t);
+                                        }
+                                    }
+                                    KnownEncoding::AppFloat => {
+                                        let text: RichText = f64_create_rich_text(d);
+                                        if ui.button(text).clicked() {
+                                            self.show_view_value_window = true;
+                                            self.view_value_window.clone_from(d, key, k, t);
+                                        }
+                                    }
+                                    KnownEncoding::TextJson => {
+                                        let text: RichText = json_create_rich_text(d);
+                                        if ui.button(text).clicked() {
+                                            self.show_view_value_window = true;
+                                            self.view_value_window.clone_from(d, key, k, t);
+                                        }
+                                    }
+                                    _ => {
+                                        ui.label("...");
+                                    }
+                                },
+                                Encoding::WithSuffix(_, _) => {
+                                    ui.label("...");
+                                }
+                            });
+                            row.col(|ui| {
+                                let text = format!("{}", d.encoding);
+                                ui.label(text);
+                            });
+                            row.col(|ui| {
+                                if let Some(timestamp) = t {
+                                    let text = RichText::new(format!("{}", timestamp.get_time()))
+                                        .size(12.0);
+                                    ui.label(text);
+                                } else {
+                                    ui.label("-");
+                                }
+                            });
+                        });
+                    }
+                }
+            };
+
+            ScrollArea::horizontal()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let table = TableBuilder::new(ui)
+                        .striped(true)
+                        .cell_layout(Layout::left_to_right(Align::Center))
+                        .column(
+                            Column::initial(40.0)
+                                .range(40.0..=160.0)
+                                .resizable(true)
+                                .clip(true),
+                        )
+                        .column(Column::auto())
+                        .column(Column::remainder())
+                        .resizable(true);
+
+                    table
+                        .header(20.0, |mut header| {
+                            header.col(|ui| {
+                                ui.label("value");
+                            });
+                            header.col(|ui| {
+                                ui.label("type");
+                            });
+                            header.col(|ui| {
+                                ui.label("timestamp");
+                            });
+                        })
+                        .body(show_body);
+                });
+        });
+    }
+
+    pub fn processing_sub_cb(&mut self, id: u64, sample: Sample) {
+        let key = sample.key_expr.as_str();
+        if let Some(data_group) = self.sub_data_group.get_mut(&id) {
+            if let Some(sv) = data_group.map.get_mut(key) {
+                sv.add_data((sample.value, sample.kind, sample.timestamp));
+            } else {
+                println!("new key: {}", key);
+                let mut sv = DataValues::default();
+                sv.add_data((sample.value, sample.kind, sample.timestamp));
+                let _ = data_group.map.insert(key.to_string(), sv);
+            }
+        }
+    }
+
+    pub fn processing_del_sub_res(&mut self, id: u64) {
+        if let Some(data_group) = self.sub_data_group.get_mut(&id) {
+            data_group.subscribed = false;
+        }
+    }
+
+    pub fn processing_add_sub_res(&mut self, id: u64, r: Result<(), String>) {
+        if let Some(data_group) = self.sub_data_group.get_mut(&id) {
+            match r {
+                Ok(_) => {
+                    data_group.err_str = None;
+                    data_group.subscribed = true;
+                }
+                Err(e) => {
+                    data_group.err_str = Some(e);
+                    data_group.subscribed = false;
+                }
+            }
+        }
+    }
+}
+
+pub struct DataValues {
     deque: VecDeque<(Value, SampleKind, Option<Timestamp>)>,
     buffer_size: usize,
 }
 
-impl Default for DataSubValue {
+impl Default for DataValues {
     fn default() -> Self {
-        DataSubValue {
+        DataValues {
             deque: VecDeque::with_capacity(VALUE_BUFFER_SIZE_DEFAULT),
             buffer_size: VALUE_BUFFER_SIZE_DEFAULT,
         }
     }
 }
 
-impl DataSubValue {
+impl DataValues {
     pub fn add_data(&mut self, d: (Value, SampleKind, Option<Timestamp>)) {
         if self.deque.len() == self.buffer_size {
             let _ = self.deque.pop_front();
@@ -59,119 +479,183 @@ impl DataSubValue {
     }
 }
 
-pub struct DataSubKeyGroup {
-    pub name: String,
-    pub key_expr: String,
-    pub map: BTreeMap<String, DataSubValue>, // key
+pub struct PageSubData {
+    subscribed: bool,
+    name: String,
+    key_expr: String,
+    err_str: Option<String>,
+    selected_key: String,
+    filtered: bool,
+    filter_str: String,
+    buffer_size_tmp: u32,
+    buffer_size: u32,
+    key_tree: Tree,                    // tree be show
+    map: BTreeMap<String, DataValues>, // key
+}
+
+impl PageSubData {
+    fn from(data: &DataItem) -> PageSubData {
+        PageSubData::new(data.name.clone(), data.key_expr.clone())
+    }
+
+    fn to(&self) -> DataItem {
+        DataItem {
+            name: self.name.clone(),
+            key_expr: self.key_expr.clone(),
+        }
+    }
+
+    fn new(name: String, key_expr: String) -> PageSubData {
+        PageSubData {
+            subscribed: false,
+            name,
+            key_expr,
+            err_str: None,
+            selected_key: "".to_string(),
+            filtered: false,
+            filter_str: "".to_string(),
+            buffer_size_tmp: VALUE_BUFFER_SIZE_DEFAULT as u32,
+            buffer_size: VALUE_BUFFER_SIZE_DEFAULT as u32,
+            key_tree: Tree::default(),
+            map: BTreeMap::new(),
+        }
+    }
+
+    fn update_tree(&mut self) {
+        let keys = self.map.keys().cloned().collect();
+        let keys = if self.filtered {
+            filter(&keys, self.filter_str.as_str())
+        } else {
+            keys
+        };
+
+        self.key_tree = Tree::new(&keys);
+    }
 }
 
 #[derive(Default)]
-pub struct AddSubWindow {
-    id_count: u64,
-    name: String,
-    key_expr: String,
-    error_str: Option<String>,
+struct Tree {
+    index_top_node: BTreeMap<String, u32>, // <top node name, node index>,
+    mem: Vec<TreeNode>,
 }
 
-impl AddSubWindow {
-    fn show(
-        &mut self,
-        ctx: &Context,
-        is_open: &mut bool,
-        key_group: &mut BTreeMap<u64, DataSubKeyGroup>,
-        events: &mut VecDeque<Event>,
-    ) {
-        if (*is_open) == false {
+impl Tree {
+    pub fn new(key_list: &Vec<String>) -> Tree {
+        let mut tree = Tree::default();
+        for key in key_list {
+            tree.add_node(key);
+        }
+        tree
+    }
+
+    pub fn show_ui(&self, selected_key: &mut String, ui: &mut Ui) {
+        for (_, index_top) in &self.index_top_node {
+            let top_node: &TreeNode = self.mem.get((*index_top) as usize).unwrap();
+            top_node.show_ui(self, selected_key, ui);
+        }
+    }
+
+    fn new_node(&mut self) -> &mut TreeNode {
+        let index = self.mem.len();
+        self.mem.push(TreeNode {
+            name: String::new(),
+            index_own: index as u32,
+            index_parent: u32::MAX,
+            index_children: BTreeMap::new(),
+            key: None,
+        });
+        self.mem.last_mut().unwrap()
+    }
+
+    fn add_node(&mut self, key: &str) {
+        // let mut index_now = u32::MAX;
+        let mut index_now;
+        let mut split = key.split('/');
+        if let Some(name) = split.next() {
+            if let Some(index) = self.index_top_node.get(name) {
+                index_now = *index;
+            } else {
+                let node = self.new_node();
+                node.set_name(name);
+                index_now = node.index_own;
+                self.index_top_node.insert(name.to_string(), index_now);
+            }
+        } else {
             return;
         }
-
-        let window = egui::Window::new("注册新订阅")
-            .id(Id::new("add sub window"))
-            .collapsible(false)
-            .resizable(true)
-            .default_width(200.0)
-            .min_width(200.0);
-
-        window.show(ctx, |ui| {
-            let mut show = |ui: &mut Ui| {
-                ui.label("name");
-                let te = TextEdit::singleline(&mut self.name).font(TextStyle::Monospace);
-                ui.add(te);
-                ui.end_row();
-
-                ui.label("key expr");
-                let te = TextEdit::multiline(&mut self.key_expr)
-                    .font(TextStyle::Monospace)
-                    .desired_rows(2);
-                ui.add(te);
-                ui.end_row();
-            };
-
-            egui::Grid::new("config_grid")
-                .num_columns(2)
-                .striped(true)
-                .show(ui, |ui| {
-                    show(ui);
-                });
-
-            ui.label("");
-            if let Some(s) = &self.error_str {
-                let text = RichText::new(s).color(Color32::RED);
-                ui.label(text);
-                ui.label("");
-            }
-
-            ui.horizontal(|ui| {
-                ui.label("                 ");
-
-                if ui.button("确定").clicked() {
-                    let name: String = self.name.replace(&[' ', '\t', '\n', '\r'], "");
-
-                    if name.is_empty() {
-                        self.error_str = Some(format!("字段 name 不能为空!"));
-                        return;
+        'a: loop {
+            if let Some(name) = split.next() {
+                {
+                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                    if let Some(index) = parent.index_children.get(name) {
+                        index_now = *index;
+                        continue 'a;
                     }
-
-                    let key_expr: String = self.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
-                    if key_expr.is_empty() {
-                        self.error_str = Some(format!("字段 key_expr 不能为空!"));
-                        return;
-                    }
-
-                    let z_key_expr = match KeyExpr::new(key_expr.clone()) {
-                        Ok(ke) => ke,
-                        Err(e) => {
-                            self.error_str = Some(format!("{}", e));
-                            return;
-                        }
-                    };
-
-                    let skg = DataSubKeyGroup {
-                        name,
-                        key_expr,
-                        map: BTreeMap::new(),
-                    };
-                    self.id_count += 1;
-                    let _ = key_group.insert(self.id_count, skg);
-
-                    events.push_back(Event::AddSub(self.id_count, z_key_expr));
-
-                    *is_open = false;
-                    self.name.clear();
-                    self.key_expr.clear();
-                    self.error_str = None;
                 }
+                // let mut index_child: u32 = u32::MAX;
+                let index_child: u32;
+                {
+                    let node = self.new_node();
+                    node.set_name(name);
+                    node.set_parent(index_now);
+                    index_child = node.index_own;
+                }
+                {
+                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                    parent.index_children.insert(name.to_string(), index_child);
+                    index_now = index_child;
+                }
+            } else {
+                let nd: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
+                nd.set_key(key);
+                break 'a;
+            }
+        }
+    }
+}
 
-                ui.label("  ");
+struct TreeNode {
+    name: String,
+    index_own: u32,
+    index_parent: u32,                     // 当为顶级节点时，此值为 u32::MAX
+    index_children: BTreeMap<String, u32>, // <child name, child index>, 若没有子节点，此数组为空
+    key: Option<String>,                   // 当为叶节点时，存储完整key值
+}
 
-                if ui.button("取消").clicked() {
-                    *is_open = false;
-                    self.name.clear();
-                    self.key_expr.clear();
-                    self.error_str = None;
+impl TreeNode {
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+
+    fn set_parent(&mut self, index: u32) {
+        self.index_parent = index;
+    }
+
+    fn set_key(&mut self, key: &str) {
+        self.key = Some(key.to_string());
+    }
+
+    fn show_ui<'a>(&'a self, tree: &'a Tree, selected_key: &'a mut String, ui: &'a mut Ui) {
+        let name = self.name.clone();
+        if let Some(k) = self.key.clone() {
+            if ui
+                .selectable_label(*selected_key == k, name.clone())
+                .clicked()
+            {
+                *selected_key = k;
+            }
+        }
+        if self.index_children.is_empty() {
+            return;
+        }
+        CollapsingHeader::new(name)
+            .default_open(false)
+            .show(ui, |ui| {
+                for (_, index_child) in &self.index_children {
+                    let child: &TreeNode = tree.mem.get((*index_child) as usize).unwrap();
+                    child.show_ui(tree, selected_key, ui);
                 }
             });
-        });
     }
 }
 
@@ -205,7 +689,7 @@ impl Default for ViewValueWindow {
 
 impl ViewValueWindow {
     fn show(&mut self, ctx: &Context, is_open: &mut bool) {
-        let window = egui::Window::new("详细信息")
+        let window = egui::Window::new("Info")
             .id(Id::new("view value window"))
             .collapsible(false)
             .scroll2([true, true])
@@ -246,7 +730,7 @@ impl ViewValueWindow {
     }
 
     fn show_base_info(&mut self, ui: &mut Ui) {
-        let mut show_ui = |ui: &mut Ui| {
+        let show_ui = |ui: &mut Ui| {
             ui.label("key:  ");
             let text = RichText::new(self.key.as_str()).monospace();
             ui.label(text);
@@ -282,14 +766,14 @@ impl ViewValueWindow {
     fn show_tab_label(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if ui
-                .selectable_label(self.selected_page == ViewValueWindowPage::Parse, "解析数据")
+                .selectable_label(self.selected_page == ViewValueWindowPage::Parse, "parse")
                 .clicked()
             {
                 self.selected_page = ViewValueWindowPage::Parse;
             }
 
             if ui
-                .selectable_label(self.selected_page == ViewValueWindowPage::Raw, "原始数据")
+                .selectable_label(self.selected_page == ViewValueWindowPage::Raw, "raw")
                 .clicked()
             {
                 self.selected_page = ViewValueWindowPage::Raw;
@@ -357,500 +841,15 @@ impl ViewValueWindow {
     }
 }
 
-pub struct PageSub {
-    pub events: VecDeque<Event>,
-    pub new_sub_key_flag: bool,
-    filtered: bool,
-    filter_str: String,
-    window_tree_height: f32,
-    buffer_size_tmp: u32,
-    buffer_size: u32,
-    selected_sub_id: u64,
-    selected_key: String,
-    selected_sub_id_or_key_changed: bool,
-    show_selected_key_expr: String,
-    key_list_before_filtration: Vec<String>,
-    key_tree: Tree,                                // tree be show
-    pub key_group: BTreeMap<u64, DataSubKeyGroup>, // <sub id, key group>
-    show_add_sub_window: bool,
-    add_sub_window: AddSubWindow,
-    show_view_value_window: bool,
-    view_value_window: ViewValueWindow,
-}
-
-impl Default for PageSub {
-    fn default() -> Self {
-        PageSub {
-            events: VecDeque::new(),
-            filtered: false,
-            filter_str: String::new(),
-            window_tree_height: 400.0,
-            buffer_size_tmp: VALUE_BUFFER_SIZE_DEFAULT as u32,
-            buffer_size: VALUE_BUFFER_SIZE_DEFAULT as u32,
-            selected_sub_id: 0,
-            show_selected_key_expr: String::new(),
-            key_list_before_filtration: Vec::new(),
-            selected_key: String::new(),
-            key_group: BTreeMap::new(),
-            key_tree: Tree::default(),
-            new_sub_key_flag: false,
-            selected_sub_id_or_key_changed: false,
-            show_add_sub_window: false,
-            add_sub_window: AddSubWindow::default(),
-            show_view_value_window: false,
-            view_value_window: ViewValueWindow::default(),
-        }
-    }
-}
-
-impl PageSub {
-    pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
-        if self.new_sub_key_flag {
-            self.new_sub_key_flag = false;
-            if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
-                self.key_list_before_filtration.clear();
-                for (key, _) in &skg.map {
-                    self.key_list_before_filtration.push(key.clone());
-                }
-                self.filter_key_tree();
-            }
-        }
-
-        ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    if ui.button(RichText::new(" + ").code()).clicked() {
-                        self.show_add_sub_window = true;
-                    };
-
-                    if ui.button(RichText::new(" - ").code()).clicked() {
-                        self.events.push_back(Event::DelSub(self.selected_sub_id));
-                        self.selected_sub_id = 0;
-                        self.show_selected_key_expr.clear();
-                        self.key_list_before_filtration.clear();
-                        self.filter_key_tree();
-                    };
-                });
-
-                ui.label("");
-
-                self.show_subscribers(ui);
-            });
-
-            ui.separator();
-
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("key expr:");
-                    ui.label(RichText::new(self.show_selected_key_expr.as_str()).monospace());
-                });
-
-                ui.separator();
-
-                self.window_tree_height = ui.available_height();
-
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ScrollArea::both()
-                            .id_source("scroll_area_tree")
-                            .max_width(200.0)
-                            .min_scrolled_width(200.0)
-                            .min_scrolled_height(self.window_tree_height)
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    if ui.checkbox(&mut self.filtered, "过滤").changed() {
-                                        self.filter_key_tree();
-                                    }
-                                    let te = TextEdit::singleline(&mut self.filter_str)
-                                        .code_editor()
-                                        .interactive(self.filtered);
-                                    if ui.add(te).changed() {
-                                        self.filter_key_tree();
-                                    };
-                                });
-
-                                self.show_key_tree(ui);
-                            });
-                    });
-
-                    ui.separator();
-
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("key:");
-                            ui.label(RichText::new(&self.selected_key).monospace());
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button("清理缓存数据").clicked() {
-                                    if let Some(skg) = self.key_group.get_mut(&self.selected_sub_id)
-                                    {
-                                        if let Some(sd) =
-                                            skg.map.get_mut(self.selected_key.as_str())
-                                        {
-                                            sd.clear();
-                                        }
-                                    }
-                                }
-
-                                // if ui.button("value").clicked() {
-                                //     use uhlc::ID;
-                                //     use uuid::Uuid;
-                                //
-                                //     self.show_view_value_window = true;
-                                //     self.view_value_window.key = "demo/example/test1".to_string();
-                                //     self.view_value_window.value = Value::from("hello world");
-                                //     let time: NTP64 = Duration::from_secs(100).into();
-                                //     let buf = [
-                                //         0x1a, 0x2b, 0x3c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                //         0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                //     ];
-                                //     let id = ID::from(Uuid::new_v4());
-                                //     self.view_value_window.timestamp =
-                                //         Some(Timestamp::new(time, id));
-                                // }
-                            });
-                        });
-
-                        ui.horizontal(|ui| {
-                            if self.selected_sub_id_or_key_changed {
-                                self.selected_sub_id_or_key_changed = false;
-                                if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
-                                    if let Some(sd) = skg.map.get(self.selected_key.as_str()) {
-                                        self.buffer_size = sd.buffer_size as u32;
-                                    }
-                                }
-                            }
-                            ui.label(format!("buffer size: {}", &self.buffer_size));
-                            ui.label("   ");
-                            let dv = DragValue::new(&mut self.buffer_size_tmp)
-                                .speed(10.0)
-                                .clamp_range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
-                            ui.add(dv);
-                            if ui.button("更新缓存大小").clicked() {
-                                self.buffer_size = self.buffer_size_tmp;
-                                if let Some(skg) = self.key_group.get_mut(&self.selected_sub_id) {
-                                    if let Some(sd) = skg.map.get_mut(self.selected_key.as_str()) {
-                                        sd.set_buffer_size(self.buffer_size as usize);
-                                    }
-                                }
-                            }
-                        });
-
-                        ScrollArea::horizontal()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                self.show_value_table(ui);
-                            });
-                    });
-                });
-            });
-        });
-
-        self.add_sub_window.show(
-            ctx,
-            &mut self.show_add_sub_window,
-            &mut self.key_group,
-            &mut self.events,
-        );
-
-        self.view_value_window
-            .show(ctx, &mut self.show_view_value_window);
-    }
-
-    fn show_subscribers(&mut self, ui: &mut Ui) {
-        ScrollArea::both()
-            .max_width(160.0)
-            .auto_shrink([true, false])
-            .show(ui, |ui| {
-                let mut clicked = false;
-                for (i, d) in &self.key_group {
-                    let text = RichText::new(d.name.clone()).monospace();
-                    if ui
-                        .selectable_label((*i) == self.selected_sub_id, text)
-                        .clicked()
-                    {
-                        self.selected_sub_id_or_key_changed = true;
-                        self.selected_sub_id = *i;
-                        self.show_selected_key_expr = d.key_expr.clone();
-                        self.key_list_before_filtration.clear();
-                        for (key, _) in &d.map {
-                            self.key_list_before_filtration.push(key.clone());
-                        }
-                        clicked = true;
-                    }
-                }
-                if clicked {
-                    self.filter_key_tree();
-                }
-            });
-    }
-
-    fn show_key_tree(&mut self, ui: &mut Ui) {
-        self.key_tree.show_ui(
-            &mut self.selected_key,
-            &mut self.selected_sub_id_or_key_changed,
-            ui,
-        );
-    }
-
-    fn filter_key_tree(&mut self) {
-        if self.filtered {
-            let filtered = filter(&self.key_list_before_filtration, &self.filter_str);
-            self.key_tree = Tree::new(&filtered);
-        } else {
-            self.key_tree = Tree::new(&self.key_list_before_filtration);
+fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in list {
+        if s.contains(filter_str) {
+            out.push(s.clone());
         }
     }
 
-    fn show_value_table(&mut self, ui: &mut Ui) {
-        let mut table = TableBuilder::new(ui)
-            .striped(true)
-            .cell_layout(Layout::left_to_right(Align::Center))
-            .column(
-                Column::initial(40.0)
-                    .range(40.0..=160.0)
-                    .resizable(true)
-                    .clip(true),
-            )
-            .column(Column::auto())
-            .column(Column::remainder())
-            .resizable(true);
-
-        table
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.label("值");
-                });
-                header.col(|ui| {
-                    ui.label("类型");
-                });
-                header.col(|ui| {
-                    ui.label("时间戳");
-                });
-            })
-            .body(|mut body| {
-                if let Some(skg) = self.key_group.get(&self.selected_sub_id) {
-                    if let Some(sd) = skg.map.get(self.selected_key.as_str()) {
-                        let key = &self.selected_key;
-                        for (d, k, t) in &sd.deque {
-                            body.row(20.0, |mut row| {
-                                row.col(|ui| match d.encoding {
-                                    Encoding::Exact(ke) => match ke {
-                                        KnownEncoding::TextPlain => {
-                                            let text: RichText = text_plant_create_rich_text(d);
-                                            if ui.button(text).clicked() {
-                                                self.show_view_value_window = true;
-                                                self.view_value_window.clone_from(d, key, k, t);
-                                            }
-                                        }
-                                        KnownEncoding::AppJson => {
-                                            let text: RichText = json_create_rich_text(d);
-                                            if ui.button(text).clicked() {
-                                                self.show_view_value_window = true;
-                                                self.view_value_window.clone_from(d, key, k, t);
-                                            }
-                                        }
-                                        KnownEncoding::AppInteger => {
-                                            let text: RichText = i64_create_rich_text(d);
-                                            if ui.button(text).clicked() {
-                                                self.show_view_value_window = true;
-                                                self.view_value_window.clone_from(d, key, k, t);
-                                            }
-                                        }
-                                        KnownEncoding::AppFloat => {
-                                            let text: RichText = f64_create_rich_text(d);
-                                            if ui.button(text).clicked() {
-                                                self.show_view_value_window = true;
-                                                self.view_value_window.clone_from(d, key, k, t);
-                                            }
-                                        }
-                                        KnownEncoding::TextJson => {
-                                            let text: RichText = json_create_rich_text(d);
-                                            if ui.button(text).clicked() {
-                                                self.show_view_value_window = true;
-                                                self.view_value_window.clone_from(d, key, k, t);
-                                            }
-                                        }
-                                        _ => {
-                                            ui.label("...");
-                                        }
-                                    },
-                                    Encoding::WithSuffix(_, _) => {
-                                        ui.label("...");
-                                    }
-                                });
-                                row.col(|ui| {
-                                    let text = format!("{}", d.encoding);
-                                    ui.label(text);
-                                });
-                                row.col(|ui| {
-                                    if let Some(timestamp) = t {
-                                        let text =
-                                            RichText::new(format!("{}", timestamp.get_time()))
-                                                .size(12.0);
-                                        ui.label(text);
-                                    } else {
-                                        ui.label("-");
-                                    }
-                                });
-                            });
-                        }
-                    }
-                }
-            });
-    }
-
-    pub fn processing_sub_cb(&mut self, d: Box<(u64, Sample)>) {
-        let (id, data): (u64, Sample) = *d;
-        let key = data.key_expr.as_str();
-
-        if let Some(skg) = self.key_group.get_mut(&id) {
-            if let Some(sv) = skg.map.get_mut(key) {
-                sv.add_data((data.value, data.kind, data.timestamp));
-            } else {
-                println!("new key: {}", key);
-                let mut sv = DataSubValue::default();
-                sv.add_data((data.value, data.kind, data.timestamp));
-                let _ = skg.map.insert(key.to_string(), sv);
-                self.new_sub_key_flag = true;
-            }
-        }
-    }
-
-    pub fn processing_del_sub_res(&mut self, id: u64) {
-        let _ = self.key_group.remove(&id);
-    }
-}
-
-struct TreeNode {
-    name: String,
-    index_own: u32,
-    index_parent: u32,                     // 当为顶级节点时，此值为 u32::MAX
-    index_children: BTreeMap<String, u32>, // <child name, child index>, 若没有子节点，此数组为空
-    key: Option<String>,                   // 当为叶节点时，存储完整key值
-}
-
-impl TreeNode {
-    fn set_name(&mut self, name: &str) {
-        self.name = name.to_string();
-    }
-
-    fn set_parent(&mut self, index: u32) {
-        self.index_parent = index;
-    }
-
-    fn set_key(&mut self, key: &str) {
-        self.key = Some(key.to_string());
-    }
-
-    fn show_ui<'a>(
-        &'a self,
-        tree: &'a Tree,
-        selected_key: &'a mut String,
-        selected_key_changed: &mut bool,
-        ui: &'a mut Ui,
-    ) {
-        let name = self.name.clone();
-        if let Some(k) = self.key.clone() {
-            if ui
-                .selectable_label(*selected_key == k, name.clone())
-                .clicked()
-            {
-                *selected_key = k;
-                *selected_key_changed = true;
-            }
-        }
-        if self.index_children.is_empty() {
-            return;
-        }
-        CollapsingHeader::new(name)
-            .default_open(false)
-            .show(ui, |ui| {
-                for (_, index_child) in &self.index_children {
-                    let child: &TreeNode = tree.mem.get((*index_child) as usize).unwrap();
-                    child.show_ui(tree, selected_key, selected_key_changed, ui);
-                }
-            });
-    }
-}
-
-#[derive(Default)]
-struct Tree {
-    index_top_node: BTreeMap<String, u32>, // <top node name, node index>,
-    mem: Vec<TreeNode>,
-}
-
-impl Tree {
-    pub fn new(key_list: &Vec<String>) -> Tree {
-        let mut tree = Tree::default();
-        for key in key_list {
-            tree.add_node(key);
-        }
-        tree
-    }
-
-    pub fn show_ui(&self, selected_key: &mut String, selected_key_changed: &mut bool, ui: &mut Ui) {
-        for (_, index_top) in &self.index_top_node {
-            let top_node: &TreeNode = self.mem.get((*index_top) as usize).unwrap();
-            top_node.show_ui(self, selected_key, selected_key_changed, ui);
-        }
-    }
-
-    fn new_node(&mut self) -> &mut TreeNode {
-        let index = self.mem.len();
-        self.mem.push(TreeNode {
-            name: String::new(),
-            index_own: index as u32,
-            index_parent: u32::MAX,
-            index_children: BTreeMap::new(),
-            key: None,
-        });
-        self.mem.last_mut().unwrap()
-    }
-
-    fn add_node(&mut self, key: &str) {
-        let mut index_now = u32::MAX;
-        let mut split = key.split('/');
-        if let Some(name) = split.next() {
-            if let Some(index) = self.index_top_node.get(name) {
-                index_now = *index;
-            } else {
-                let node = self.new_node();
-                node.set_name(name);
-                index_now = node.index_own;
-                self.index_top_node.insert(name.to_string(), index_now);
-            }
-        } else {
-            return;
-        }
-        'a: loop {
-            if let Some(name) = split.next() {
-                {
-                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
-                    if let Some(index) = parent.index_children.get(name) {
-                        index_now = *index;
-                        continue 'a;
-                    }
-                }
-                let mut index_child: u32 = u32::MAX;
-                {
-                    let node = self.new_node();
-                    node.set_name(name);
-                    node.set_parent(index_now);
-                    index_child = node.index_own;
-                }
-                {
-                    let parent: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
-                    parent.index_children.insert(name.to_string(), index_child);
-                    index_now = index_child;
-                }
-            } else {
-                let nd: &mut TreeNode = self.mem.get_mut(index_now as usize).unwrap();
-                nd.set_key(key);
-                break 'a;
-            }
-        }
-    }
+    out
 }
 
 #[test]
@@ -943,15 +942,4 @@ fn tree_add_node() {
         tree.mem.get(4).unwrap().key,
         Some("demo2/example1".to_string())
     );
-}
-
-fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for s in list {
-        if s.contains(filter_str) {
-            out.push(s.clone());
-        }
-    }
-
-    out
 }

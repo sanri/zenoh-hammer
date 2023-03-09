@@ -1,8 +1,8 @@
-use crate::zenoh::QueryData;
 use egui::{
     Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui,
 };
 use egui_extras::{Column, TableBuilder};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     str::FromStr,
@@ -10,18 +10,124 @@ use std::{
 };
 use zenoh::{
     prelude::{
-        Encoding, KeyExpr, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget,
-        Sample, Value,
+        Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget, Value,
     },
     query::{ConsolidationMode, Mode, Reply},
 };
+
+use crate::{app::ZenohValue, zenoh::QueryData};
 
 // query
 pub enum Event {
     Get(Box<QueryData>),
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ZQueryTarget {
+    BestMatching,
+    All,
+    AllComplete,
+}
+
+impl From<QueryTarget> for ZQueryTarget {
+    fn from(value: QueryTarget) -> Self {
+        match value {
+            QueryTarget::BestMatching => ZQueryTarget::BestMatching,
+            QueryTarget::All => ZQueryTarget::All,
+            QueryTarget::AllComplete => ZQueryTarget::AllComplete,
+        }
+    }
+}
+
+impl Into<QueryTarget> for ZQueryTarget {
+    fn into(self) -> QueryTarget {
+        match self {
+            ZQueryTarget::BestMatching => QueryTarget::BestMatching,
+            ZQueryTarget::All => QueryTarget::All,
+            ZQueryTarget::AllComplete => QueryTarget::AllComplete,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ZConsolidation {
+    Auto,
+    None,
+    Monotonic,
+    Latest,
+}
+
+impl From<QueryConsolidation> for ZConsolidation {
+    fn from(value: QueryConsolidation) -> Self {
+        match value.mode() {
+            Mode::Auto => ZConsolidation::Auto,
+            Mode::Manual(m) => match m {
+                ConsolidationMode::None => ZConsolidation::None,
+                ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
+                ConsolidationMode::Latest => ZConsolidation::Latest,
+            },
+        }
+    }
+}
+
+impl Into<QueryConsolidation> for ZConsolidation {
+    fn into(self) -> QueryConsolidation {
+        match self {
+            ZConsolidation::Auto => QueryConsolidation::AUTO,
+            ZConsolidation::None => QueryConsolidation::from(ConsolidationMode::None),
+            ZConsolidation::Monotonic => QueryConsolidation::from(ConsolidationMode::Monotonic),
+            ZConsolidation::Latest => QueryConsolidation::from(ConsolidationMode::Latest),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ZLocality {
+    SessionLocal,
+    Remote,
+    Any,
+}
+
+impl From<Locality> for ZLocality {
+    fn from(value: Locality) -> Self {
+        match value {
+            Locality::SessionLocal => ZLocality::SessionLocal,
+            Locality::Remote => ZLocality::Remote,
+            Locality::Any => ZLocality::Any,
+        }
+    }
+}
+
+impl Into<Locality> for ZLocality {
+    fn into(self) -> Locality {
+        match self {
+            ZLocality::SessionLocal => Locality::SessionLocal,
+            ZLocality::Remote => Locality::Remote,
+            ZLocality::Any => Locality::Any,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DataItem {
+    name: String,
+    key: String,
+    target: ZQueryTarget,
+    consolidation: ZConsolidation,
+    locality: ZLocality,
+    timeout: u64,
+    value: ZenohValue,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Data {
+    gets: Vec<DataItem>,
+}
+
+pub struct PageGetData {
     id: u64,
     name: String,
     input_key: String,
@@ -32,12 +138,12 @@ pub struct Data {
     edit_str: String,
     selected_encoding: KnownEncoding,
     replies: Vec<Reply>,
-    pub info: Option<RichText>,
+    info: Option<RichText>,
 }
 
-impl Default for Data {
+impl Default for PageGetData {
     fn default() -> Self {
-        Data {
+        PageGetData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/test".to_string(),
@@ -53,11 +159,41 @@ impl Default for Data {
     }
 }
 
-impl Data {
+impl PageGetData {
+    fn from(data: &DataItem) -> PageGetData {
+        let (encoding, s) = data.value.to();
+        PageGetData {
+            id: 0,
+            name: data.name.clone(),
+            input_key: data.key.clone(),
+            selected_target: data.target.into(),
+            selected_consolidation: data.consolidation.into(),
+            selected_locality: data.locality.into(),
+            timeout: data.timeout,
+            edit_str: s,
+            selected_encoding: encoding,
+            replies: vec![],
+            info: None,
+        }
+    }
+
+    fn to(&self) -> DataItem {
+        let value = ZenohValue::from(self.selected_encoding, self.edit_str.clone());
+        DataItem {
+            name: self.name.clone(),
+            key: self.input_key.clone(),
+            target: self.selected_target.into(),
+            consolidation: self.selected_consolidation.into(),
+            locality: self.selected_locality.into(),
+            timeout: self.timeout,
+            value,
+        }
+    }
+
     fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>, show_window: &mut bool) {
         ui.vertical(|ui| {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                if ui.button("发送").clicked() {
+                if ui.button("send").clicked() {
                     self.send(events);
                 }
             });
@@ -243,7 +379,7 @@ impl Data {
             return;
         }
 
-        let mut table = TableBuilder::new(ui)
+        let table = TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
             .column(Column::initial(100.0).resizable(true).clip(true))
@@ -395,8 +531,8 @@ impl ViewReplyWindow {
 
 pub struct PageGet {
     pub events: VecDeque<Event>,
-    pub data_map: BTreeMap<u64, Data>,
-    selected_data: u64,
+    pub data_map: BTreeMap<u64, PageGetData>,
+    selected_data_id: u64,
     data_id_count: u64,
     show_view_reply_window: bool,
     view_reply_window: ViewReplyWindow,
@@ -405,11 +541,11 @@ pub struct PageGet {
 impl Default for PageGet {
     fn default() -> Self {
         let mut btm = BTreeMap::new();
-        btm.insert(1, Data::default());
+        btm.insert(1, PageGetData::default());
         PageGet {
             events: VecDeque::new(),
             data_map: btm,
-            selected_data: 1,
+            selected_data_id: 1,
             data_id_count: 1,
             show_view_reply_window: false,
             view_reply_window: ViewReplyWindow::default(),
@@ -418,13 +554,33 @@ impl Default for PageGet {
 }
 
 impl PageGet {
-    pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
-        ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
-            self.show_gets(ui);
+    pub fn load(&mut self, data: Data) {
+        self.clean_all_get_data();
 
-            ui.separator();
+        for d in data.gets {
+            let page_data = PageGetData::from(&d);
+            self.add_get_data(page_data);
+        }
+    }
 
-            let mut data = match self.data_map.get_mut(&self.selected_data) {
+    pub fn create_store_data(&self) -> Data {
+        let mut data = Vec::with_capacity(self.data_map.len());
+        for (_, d) in &self.data_map {
+            let data_item = d.to();
+            data.push(data_item);
+        }
+        Data { gets: data }
+    }
+
+    pub fn show(&mut self, ctx: &Context) {
+        egui::SidePanel::left("page_get_panel_left")
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.show_gets(ui);
+            });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
                 }
@@ -442,12 +598,7 @@ impl PageGet {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 if ui.button(RichText::new(" + ").code()).clicked() {
-                    self.data_id_count += 1;
-                    let data = Data {
-                        id: self.data_id_count,
-                        ..Data::default()
-                    };
-                    self.data_map.insert(self.data_id_count, data);
+                    self.add_get_data(PageGetData::default());
                 };
 
                 if ui.button(RichText::new(" - ").code()).clicked() {
@@ -455,27 +606,30 @@ impl PageGet {
                         return;
                     }
 
-                    let _ = self.data_map.remove(&self.selected_data);
-                    for (k, _) in &self.data_map {
-                        self.selected_data = *k;
-                        break;
-                    }
+                    let _ = self.data_map.remove(&self.selected_data_id);
+                    self.selected_data_id = 0;
                 };
             });
 
             ui.label("");
 
-            ScrollArea::both()
-                .id_source("gets list")
-                .max_width(160.0)
-                .auto_shrink([true, false])
-                .show(ui, |ui| {
-                    for (i, d) in &self.data_map {
-                        let text = RichText::new(d.name.clone()).monospace();
-                        ui.selectable_value(&mut self.selected_data, *i, text);
-                    }
-                });
+            for (i, d) in &self.data_map {
+                let text = RichText::new(d.name.clone()).monospace();
+                ui.selectable_value(&mut self.selected_data_id, *i, text);
+            }
         });
+    }
+
+    fn add_get_data(&mut self, mut data: PageGetData) {
+        self.data_id_count += 1;
+        data.id = self.data_id_count;
+        self.data_map.insert(self.data_id_count, data);
+        self.selected_data_id = self.data_id_count;
+    }
+
+    fn clean_all_get_data(&mut self) {
+        self.data_map.clear();
+        self.selected_data_id = 0;
     }
 
     pub fn processing_get_res(&mut self, res: Box<(u64, Reply)>) {
