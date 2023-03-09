@@ -3,12 +3,10 @@ name = "zenoh-hammer"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-egui = { version = "0.20" }
-egui_extras = { version = "0.20" }
-eframe = { version = "0.20", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
+egui = { version = "0.21" }
+egui_extras = { version = "0.21" }
+eframe = { version = "0.21", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 tracing-subscriber = "0.3"
 #zenoh = { version = "0.7.0-rc", features = [ "default", "unstable" ] }
 zenoh = { git = "https://github.com/sanri/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
