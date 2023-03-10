@@ -1,6 +1,6 @@
 [package]
 name = "zenoh-hammer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -10,8 +10,8 @@ eframe = { version = "0.21", default-features = false, features = [ "persistence
 egui_file = "0.8"
 tracing-subscriber = "0.3"
 #zenoh = { version = "0.7.0-rc", features = [ "default", "unstable" ] }
-#zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
-zenoh = { git = "https://github.com/sanri/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
+zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
+#zenoh = { git = "https://github.com/sanri/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
 async-std = { version = "=1.12", default-features = false }
 futures = "0.3"
 flume = "0.10"
@@ -23,3 +23,4 @@ log = "0.4"
 env_logger = "0.10"
 uhlc = "0.5"
 uuid = "1.2"
+arboard = "3.2"

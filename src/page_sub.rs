@@ -1,3 +1,4 @@
+use arboard::Clipboard;
 use egui::{
     Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
     TextEdit, TextStyle, Ui,
@@ -278,7 +279,8 @@ impl PageSub {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 if ui.button("key:").on_hover_text("copy key").clicked() {
-                    todo!()
+                    let mut clipboard = Clipboard::new().unwrap();
+                    clipboard.set_text(selected_key.clone()).unwrap();
                 }
                 ui.label(RichText::new(&selected_key).monospace());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
