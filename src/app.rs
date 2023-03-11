@@ -3,7 +3,7 @@ use egui::{Color32, Context, Layout, RichText};
 use egui_file::{DialogType, FileDialog};
 use flume::{unbounded, TryRecvError};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 use zenoh::{
@@ -11,8 +11,8 @@ use zenoh::{
     value::Value,
 };
 
-use crate::file::AppStoreData;
 use crate::{
+    file::AppStoreData,
     page_get::PageGet,
     page_put::PagePut,
     page_session,
@@ -69,11 +69,15 @@ impl eframe::App for HammerApp {
         self.processing_page_put_events();
         self.processing_page_get_events();
         self.show_ui(ctx, frame);
-        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_millis(100));
     }
 }
 
 impl HammerApp {
+    pub fn set_pixels_per_point(&mut self, p: f32) {
+        self.pixels_per_point = p;
+    }
+
     fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
         ctx.set_pixels_per_point(self.pixels_per_point);
 

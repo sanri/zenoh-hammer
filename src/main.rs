@@ -1,5 +1,6 @@
 mod app;
 mod file;
+mod hex_viewer;
 mod language;
 mod page_get;
 mod page_put;
@@ -19,7 +20,6 @@ fn main() {
     let hammer_app = HammerApp::default();
     let create: AppCreator = Box::new(|cc| {
         cc.egui_ctx.set_fonts(fonts);
-        // cc.egui_ctx.set_pixels_per_point(3.0);
         Box::new(hammer_app)
     });
     let _ = eframe::run_native("Zenoh 🔨", options, create);

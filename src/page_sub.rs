@@ -10,7 +10,8 @@ use std::{
     str::FromStr,
 };
 use zenoh::{
-    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, Value},
+    buffers::reader::{HasReader, Reader},
+    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
     sample::Sample,
     time::Timestamp,
 };
@@ -18,6 +19,7 @@ use zenoh::{
 use crate::app::{
     f64_create_rich_text, i64_create_rich_text, json_create_rich_text, text_plant_create_rich_text,
 };
+use crate::hex_viewer::HexViewer;
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
 
@@ -673,7 +675,7 @@ pub struct ViewValueWindow {
     value: Value,
     kind: SampleKind,
     timestamp: Option<Timestamp>,
-    raw_data_offset: u64,
+    hex_viewer: HexViewer,
 }
 
 impl Default for ViewValueWindow {
@@ -684,7 +686,7 @@ impl Default for ViewValueWindow {
             value: Value::empty(),
             kind: SampleKind::Put,
             timestamp: None,
-            raw_data_offset: u64::MAX,
+            hex_viewer: HexViewer::new(vec![]),
         }
     }
 }
@@ -729,6 +731,12 @@ impl ViewValueWindow {
         self.kind = kind.clone();
         self.timestamp = timestamp.clone();
         self.value = value.clone();
+
+        let data_len = value.payload.len();
+        let mut data: Vec<u8> = Vec::with_capacity(data_len);
+        data.resize(data_len, 0);
+        let _ = value.payload.reader().read_exact(data.as_mut_slice());
+        self.hex_viewer = HexViewer::new(data);
     }
 
     fn show_base_info(&mut self, ui: &mut Ui) {
@@ -784,7 +792,7 @@ impl ViewValueWindow {
     }
 
     fn show_page_raw(&mut self, ui: &mut Ui) {
-        ui.label(format!("offset: {}", self.raw_data_offset));
+        self.hex_viewer.show(ui);
     }
 
     fn show_page_parse(&mut self, ui: &mut Ui) {

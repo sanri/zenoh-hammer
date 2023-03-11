@@ -3,6 +3,10 @@ name = "zenoh-hammer"
 version = "0.2.0"
 edition = "2021"
 
+[[example]]
+name = "hex_viewer"
+path = "examples/hex_viewer.rs"
+
 [dependencies]
 egui = { version = "0.21" }
 egui_extras = { version = "0.21" }
