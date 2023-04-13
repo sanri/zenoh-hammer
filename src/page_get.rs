@@ -1,3 +1,4 @@
+use arboard::Clipboard;
 use egui::{
     Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui,
 };
@@ -9,8 +10,10 @@ use std::{
     time::Duration,
 };
 use zenoh::{
+    buffers::reader::{HasReader, Reader},
     prelude::{
-        Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget, Value,
+        Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget, Sample,
+        SplitBuffer, Value,
     },
     query::{ConsolidationMode, Mode, Reply},
 };
@@ -20,6 +23,7 @@ use crate::{
         f64_create_rich_text, i64_create_rich_text, json_create_rich_text,
         text_plant_create_rich_text, ZenohValue,
     },
+    hex_viewer::HexViewer,
     zenoh::QueryData,
 };
 
@@ -559,13 +563,25 @@ impl PageGetData {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ViewReplyWindowPage {
+    Raw,
+    Parse,
+}
+
 struct ViewReplyWindow {
+    selected_page: ViewReplyWindowPage,
     reply: Option<Reply>,
+    hex_viewer: HexViewer,
 }
 
 impl Default for ViewReplyWindow {
     fn default() -> Self {
-        ViewReplyWindow { reply: None }
+        ViewReplyWindow {
+            selected_page: ViewReplyWindowPage::Parse,
+            reply: None,
+            hex_viewer: HexViewer::new(vec![]),
+        }
     }
 }
 
@@ -580,14 +596,166 @@ impl ViewReplyWindow {
             .default_width(200.0)
             .min_width(200.0);
 
-        window.show(ctx, |ui| match &self.reply {
-            None => {
-                ui.label("none");
+        window.show(ctx, |ui| {
+            let reply = match &self.reply {
+                None => {
+                    ui.label("none");
+                    return;
+                }
+                Some(s) => s,
+            };
+
+            ui.horizontal(|ui| {
+                if ui.button("replier id:").on_hover_text("copy").clicked() {
+                    let mut clipboard = Clipboard::new().unwrap();
+                    clipboard.set_text(reply.replier_id.to_string()).unwrap();
+                }
+                let text = RichText::new(reply.replier_id.to_string()).monospace();
+                ui.label(text);
+            });
+
+            match &reply.sample {
+                Ok(sample) => {
+                    Self::show_base_info(sample, ui);
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(
+                            &mut self.selected_page,
+                            ViewReplyWindowPage::Parse,
+                            "parse",
+                        );
+
+                        if ui
+                            .selectable_value(
+                                &mut self.selected_page,
+                                ViewReplyWindowPage::Raw,
+                                "raw",
+                            )
+                            .clicked()
+                        {
+                            if let Some(reply) = &self.reply {
+                                if let Ok(sample) = &reply.sample {
+                                    let value = &sample.value;
+                                    let data_len = value.payload.len();
+                                    let mut data: Vec<u8> = Vec::with_capacity(data_len);
+                                    data.resize(data_len, 0);
+                                    let _ = value.payload.reader().read_exact(data.as_mut_slice());
+                                    self.hex_viewer = HexViewer::new(data);
+                                }
+                            }
+                        }
+                    });
+
+                    match self.selected_page {
+                        ViewReplyWindowPage::Raw => {
+                            self.hex_viewer.show(ui);
+                        }
+                        ViewReplyWindowPage::Parse => {
+                            Self::show_page_parse(&sample.value, ui);
+                        }
+                    };
+                }
+                Err(value) => {
+                    let text: RichText = match String::try_from(value) {
+                        Ok(o) => RichText::new(o).monospace().color(Color32::RED),
+                        Err(e) => RichText::new(e.to_string()).monospace().color(Color32::RED),
+                    };
+                    ui.label(text);
+                }
             }
-            Some(reply) => {
-                ui.label(format!("zenoh id: {}", reply.replier_id));
-                // reply.sample.unwrap().value
+        });
+    }
+
+    fn show_page_parse(value: &Value, ui: &mut Ui) {
+        match value.encoding.prefix() {
+            KnownEncoding::TextPlain => {
+                let mut s = match String::try_from(value) {
+                    Ok(s) => s,
+                    Err(e) => format!("{}", e),
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
             }
+            KnownEncoding::AppJson => {
+                let mut s: String = match serde_json::Value::try_from(value) {
+                    Ok(o) => {
+                        format!("{:#}", o)
+                    }
+                    Err(e) => {
+                        format!("{}", e)
+                    }
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
+            KnownEncoding::AppInteger => {
+                let text: RichText = i64_create_rich_text(value);
+                ui.label(text);
+            }
+            KnownEncoding::AppFloat => {
+                let text: RichText = f64_create_rich_text(value);
+                ui.label(text);
+            }
+            KnownEncoding::TextJson => {
+                let mut s: String = match serde_json::Value::try_from(value) {
+                    Ok(o) => {
+                        format!("{:#}", o)
+                    }
+                    Err(e) => {
+                        format!("{}", e)
+                    }
+                };
+                ui.add(
+                    TextEdit::multiline(&mut s)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn show_base_info(sample: &Sample, ui: &mut Ui) {
+        let show_ui = |ui: &mut Ui| {
+            // ui.label("key:  ");
+            if ui.button("key:").on_hover_text("copy").clicked() {
+                let mut clipboard = Clipboard::new().unwrap();
+                clipboard.set_text(sample.key_expr.as_str()).unwrap();
+            }
+            let text = RichText::new(sample.key_expr.as_str()).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("kind:  ");
+            let text = RichText::new(sample.kind.to_string()).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("encoding:  ");
+            let text = RichText::new(format!("{}", sample.value.encoding)).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("timestamp:  ");
+            let text = if let Some(t) = sample.timestamp {
+                RichText::new(t.to_string().replace('/', "\n")).monospace()
+            } else {
+                RichText::new("none").monospace()
+            };
+            ui.label(text);
+            ui.end_row();
+        };
+
+        egui::Grid::new("base_info").num_columns(2).show(ui, |ui| {
+            show_ui(ui);
         });
     }
 }

@@ -16,10 +16,13 @@ use zenoh::{
     time::Timestamp,
 };
 
-use crate::app::{
-    f64_create_rich_text, i64_create_rich_text, json_create_rich_text, text_plant_create_rich_text,
+use crate::{
+    app::{
+        f64_create_rich_text, i64_create_rich_text, json_create_rich_text,
+        text_plant_create_rich_text,
+    },
+    hex_viewer::HexViewer,
 };
-use crate::hex_viewer::HexViewer;
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
 
