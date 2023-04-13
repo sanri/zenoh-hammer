@@ -15,7 +15,13 @@ use zenoh::{
     query::{ConsolidationMode, Mode, Reply},
 };
 
-use crate::{app::ZenohValue, zenoh::QueryData};
+use crate::{
+    app::{
+        f64_create_rich_text, i64_create_rich_text, json_create_rich_text,
+        text_plant_create_rich_text, ZenohValue,
+    },
+    zenoh::QueryData,
+};
 
 // query
 pub enum Event {
@@ -190,7 +196,13 @@ impl PageGetData {
         }
     }
 
-    fn show(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>, show_window: &mut bool) {
+    fn show(
+        &mut self,
+        ui: &mut Ui,
+        events: &mut VecDeque<Event>,
+        show_window: &mut bool,
+        reply_window: &mut ViewReplyWindow,
+    ) {
         ui.vertical(|ui| {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 if ui.button("send").clicked() {
@@ -211,7 +223,7 @@ impl PageGetData {
             ScrollArea::horizontal()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    self.show_reply(ui, show_window);
+                    self.show_reply(ui, show_window, reply_window);
                 });
         });
     }
@@ -374,7 +386,12 @@ impl PageGetData {
         };
     }
 
-    fn show_reply(&mut self, ui: &mut Ui, show_window: &mut bool) {
+    fn show_reply(
+        &mut self,
+        ui: &mut Ui,
+        show_window: &mut bool,
+        reply_window: &mut ViewReplyWindow,
+    ) {
         if self.replies.is_empty() {
             return;
         }
@@ -383,6 +400,8 @@ impl PageGetData {
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
             .column(Column::initial(100.0).resizable(true).clip(true))
+            .column(Column::auto())
+            .column(Column::auto())
             .column(Column::remainder())
             .resizable(true);
 
@@ -392,7 +411,13 @@ impl PageGetData {
                     ui.label("key");
                 });
                 header.col(|ui| {
-                    ui.label("info");
+                    ui.label("value");
+                });
+                header.col(|ui| {
+                    ui.label("type");
+                });
+                header.col(|ui| {
+                    ui.label("timestamp");
                 });
             })
             .body(|mut body| {
@@ -400,14 +425,39 @@ impl PageGetData {
                     body.row(20.0, |mut row| {
                         match &reply.sample {
                             Ok(o) => {
-                                let text = o.key_expr.to_string();
+                                let text_key = o.key_expr.to_string();
+                                let text_timestamp = match o.timestamp {
+                                    None => "-".to_string(),
+                                    Some(s) => s.to_string(),
+                                };
+                                let text_type = format!("{}", o.encoding);
+                                let text_button = match o.encoding {
+                                    Encoding::Exact(ex) => match ex {
+                                        KnownEncoding::TextPlain => {
+                                            text_plant_create_rich_text(&o.value)
+                                        }
+                                        KnownEncoding::AppJson => json_create_rich_text(&o.value),
+                                        KnownEncoding::AppInteger => i64_create_rich_text(&o.value),
+                                        KnownEncoding::AppFloat => f64_create_rich_text(&o.value),
+                                        KnownEncoding::TextJson => json_create_rich_text(&o.value),
+                                        _ => RichText::new("...").monospace(),
+                                    },
+                                    Encoding::WithSuffix(_, _) => RichText::new("...").monospace(),
+                                };
                                 row.col(|ui| {
-                                    ui.label(text);
+                                    ui.label(text_key);
                                 });
                                 row.col(|ui| {
-                                    if ui.button("...").clicked() {
+                                    if ui.button(text_button).clicked() {
+                                        reply_window.reply = Some(reply.clone());
                                         *show_window = true;
                                     }
+                                });
+                                row.col(|ui| {
+                                    ui.label(text_type);
+                                });
+                                row.col(|ui| {
+                                    ui.label(text_timestamp);
                                 });
                             }
                             Err(e) => {
@@ -418,8 +468,15 @@ impl PageGetData {
                                 });
                                 row.col(|ui| {
                                     if ui.button("...").clicked() {
+                                        reply_window.reply = Some(reply.clone());
                                         *show_window = true;
                                     }
+                                });
+                                row.col(|ui| {
+                                    ui.label("-");
+                                });
+                                row.col(|ui| {
+                                    ui.label("-");
                                 });
                             }
                         };
@@ -523,8 +580,14 @@ impl ViewReplyWindow {
             .default_width(200.0)
             .min_width(200.0);
 
-        window.show(ctx, |ui| {
-            ui.label("hello");
+        window.show(ctx, |ui| match &self.reply {
+            None => {
+                ui.label("none");
+            }
+            Some(reply) => {
+                ui.label(format!("zenoh id: {}", reply.replier_id));
+                // reply.sample.unwrap().value
+            }
         });
     }
 }
@@ -587,7 +650,12 @@ impl PageGet {
                 Some(o) => o,
             };
 
-            data.show(ui, &mut self.events, &mut self.show_view_reply_window);
+            data.show(
+                ui,
+                &mut self.events,
+                &mut self.show_view_reply_window,
+                &mut self.view_reply_window,
+            );
 
             self.view_reply_window
                 .show(ctx, &mut self.show_view_reply_window);
