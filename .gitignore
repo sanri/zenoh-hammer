@@ -3,6 +3,7 @@
 
 # Rust files
 target/
+Cargo.lock
 
 # Added by cargo
 

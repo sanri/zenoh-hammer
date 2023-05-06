@@ -85,6 +85,9 @@ impl HexViewer {
     }
 
     fn show_ascii(&mut self, ui: &mut Ui) {
+        let mut style = ui.style_mut();
+        style.spacing.item_spacing.x = 0.0;
+        style.spacing.button_padding.x = 1.0;
         ui.vertical(|ui| {
             let rows = self.buffer.len() / self.number_columns;
             for row in 0..=rows {
