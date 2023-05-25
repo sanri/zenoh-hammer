@@ -32,7 +32,6 @@ pub enum Page {
 }
 
 pub struct HammerApp {
-    pixels_per_point: f32,
     sender_to_zenoh: Option<Sender<MsgGuiToZenoh>>,
     receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
     opened_file: Option<PathBuf>,
@@ -47,7 +46,6 @@ pub struct HammerApp {
 impl Default for HammerApp {
     fn default() -> Self {
         HammerApp {
-            pixels_per_point: 2.0,
             sender_to_zenoh: None,
             receiver_from_zenoh: None,
             opened_file: None,
@@ -74,16 +72,10 @@ impl eframe::App for HammerApp {
 }
 
 impl HammerApp {
-    pub fn set_pixels_per_point(&mut self, p: f32) {
-        self.pixels_per_point = p;
-    }
-
-    fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
-        ctx.set_pixels_per_point(self.pixels_per_point);
-
+    fn show_ui(&mut self, ctx: &Context, frame: &mut Frame) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                self.show_bar_contents(ui);
+                self.show_bar_contents(ui, frame.info().native_pixels_per_point);
             });
         });
 
@@ -123,7 +115,7 @@ impl HammerApp {
         }
     }
 
-    fn show_bar_contents(&mut self, ui: &mut egui::Ui) {
+    fn show_bar_contents(&mut self, ui: &mut egui::Ui, native_pixels_per_point: Option<f32>) {
         ui.menu_button("file", |ui| {
             ui.set_min_width(80.0);
 
@@ -167,43 +159,7 @@ impl HammerApp {
             }
 
             ui.menu_button("zoom", |ui| {
-                if ui.add(egui::Button::new("+")).clicked() {
-                    self.pixels_per_point += 0.5;
-                    if self.pixels_per_point > 4.0 {
-                        self.pixels_per_point = 4.0
-                    }
-                    ui.close_menu();
-                }
-
-                if ui.add(egui::Button::new("-")).clicked() {
-                    self.pixels_per_point -= 0.5;
-                    if self.pixels_per_point < 1.0 {
-                        self.pixels_per_point = 1.0;
-                    }
-                    ui.close_menu();
-                }
-
-                ui.separator();
-
-                if ui.add(egui::Button::new("1.0")).clicked() {
-                    self.pixels_per_point = 1.0;
-                    ui.close_menu();
-                }
-
-                if ui.add(egui::Button::new("2.0")).clicked() {
-                    self.pixels_per_point = 2.0;
-                    ui.close_menu();
-                }
-
-                if ui.add(egui::Button::new("3.0")).clicked() {
-                    self.pixels_per_point = 3.0;
-                    ui.close_menu();
-                }
-
-                if ui.add(egui::Button::new("4.0")).clicked() {
-                    self.pixels_per_point = 4.0;
-                    ui.close_menu();
-                }
+                egui::gui_zoom::zoom_menu_buttons(ui, native_pixels_per_point);
             });
 
             // ui.separator();

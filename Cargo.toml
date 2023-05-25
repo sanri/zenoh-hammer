@@ -1,17 +1,21 @@
 [package]
 name = "zenoh-hammer"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 
 [[example]]
 name = "hex_viewer"
 path = "examples/hex_viewer.rs"
 
+[profile.release-lto]
+inherits = "release"
+lto = true
+
 [dependencies]
-egui = { version = "0.21" }
-egui_extras = { version = "0.21" }
-eframe = { version = "0.21", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
-egui_file = "0.8"
+egui = { version = "0.22" }
+egui_extras = { version = "0.22" }
+eframe = { version = "0.22", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
+egui_file = "0.9"
 tracing-subscriber = "0.3"
 #zenoh = { version = "0.7.0-rc", features = [ "default", "unstable" ] }
 zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
