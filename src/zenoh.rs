@@ -7,6 +7,7 @@ use zenoh::{
     prelude::{r#async::*, Config, Sample, Session},
     query::Reply,
     subscriber::Subscriber,
+    time::new_reception_timestamp,
 };
 
 pub(crate) type Sender<T> = flume::Sender<T>;
@@ -155,7 +156,10 @@ async fn task_subscriber(
     'a: loop {
         select!(
             sample = subscriber.recv_async() =>{
-                if let Ok(sample) = sample{
+                if let Ok(mut sample) = sample{
+                    if sample.timestamp.is_none(){
+                        sample.timestamp = Some(new_reception_timestamp());
+                    }
                     let msg = MsgZenohToGui::SubCB(Box::new((id, sample)));
                     if let Err(e) = sender_to_gui.send(msg) {
                         println!("{}", e);

@@ -1,11 +1,12 @@
 use eframe::{
     egui,
-    egui::{Color32, Context, Layout, RichText},
+    egui::{Color32, Context, Id, Layout, RichText, Ui},
     emath::Align,
     Frame,
 };
 use egui_file::{DialogType, FileDialog};
 use flume::{unbounded, TryRecvError};
+use include_cargo_toml::include_toml;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use strum::IntoEnumIterator;
@@ -40,6 +41,7 @@ pub struct HammerApp {
     receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
     opened_file: Option<PathBuf>,
     file_dialog: Option<FileDialog>,
+    show_about: bool,
     selected_page: Page,
     p_session: PageSession,
     p_sub: PageSub,
@@ -54,6 +56,7 @@ impl Default for HammerApp {
             receiver_from_zenoh: None,
             opened_file: None,
             file_dialog: None,
+            show_about: false,
             selected_page: Page::Session,
             p_session: PageSession::default(),
             p_sub: PageSub::default(),
@@ -117,6 +120,8 @@ impl HammerApp {
                 }
             }
         }
+
+        show_about_window(ctx, &mut self.show_about);
     }
 
     fn show_bar_contents(&mut self, ui: &mut egui::Ui, native_pixels_per_point: Option<f32>) {
@@ -159,6 +164,7 @@ impl HammerApp {
             ui.style_mut().wrap = Some(false);
 
             if ui.add(egui::Button::new("about")).clicked() {
+                self.show_about = true;
                 ui.close_menu();
             }
 
@@ -492,4 +498,48 @@ fn test_zenoh_value_deserialize() {
     if let ZenohValue::TextJson(s) = td.zv {
         println!("{}", s);
     }
+}
+
+fn show_about_window(ctx: &Context, is_open: &mut bool) {
+    let window = egui::Window::new("About")
+        .id(Id::new("show about window"))
+        .collapsible(false)
+        .scroll2([false, false])
+        .open(is_open)
+        .resizable(false)
+        .default_width(240.0);
+
+    window.show(ctx, |ui| {
+        use egui::special_emojis::GITHUB;
+
+        let show_grid = |ui: &mut Ui| {
+            ui.label(RichText::new(format!("{:>13}", "Hammer:")).monospace());
+            let version = format!("v{}", include_toml!("package"."version"));
+            ui.label(RichText::new(version).monospace());
+            ui.end_row();
+
+            ui.label(RichText::new(format!("{:>13}", "Zenoh:")).monospace());
+            let version = format!("v{}", include_toml!("dependencies"."zenoh"."version"));
+            ui.label(RichText::new(version).monospace());
+            ui.end_row();
+        };
+
+        ui.with_layout(Layout::top_down(Align::Center), |ui| {
+            ui.label(RichText::new("Zenoh UI tool.").size(16.0));
+
+            ui.add_space(10.0);
+            egui::Grid::new("options_grid")
+                .num_columns(2)
+                .striped(false)
+                .show(ui, |ui| {
+                    show_grid(ui);
+                });
+
+            ui.add_space(10.0);
+            ui.hyperlink_to(
+                format!("{} Zenoh-hammer on GitHub", GITHUB),
+                "https://github.com/sanri/zenoh-hammer",
+            );
+        });
+    });
 }

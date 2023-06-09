@@ -9,11 +9,14 @@ mod page_sub;
 mod zenoh;
 
 use crate::{app::HammerApp, language::load_fonts};
-use eframe::{AppCreator, HardwareAcceleration, NativeOptions};
+use eframe::{AppCreator, HardwareAcceleration, IconData, NativeOptions};
 
 fn main() {
     let options = NativeOptions {
         hardware_acceleration: HardwareAcceleration::Required,
+        icon_data: Some(
+            IconData::try_from_png_bytes(&include_bytes!("../media/hammer.png")[..]).unwrap(),
+        ),
         ..NativeOptions::default()
     };
     let fonts = load_fonts();
