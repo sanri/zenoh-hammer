@@ -1,6 +1,6 @@
 [package]
 name = "zenoh-hammer"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 
 [[example]]
@@ -12,13 +12,13 @@ inherits = "release"
 lto = true
 
 [dependencies]
-egui = { version = "0.22" }
+eframe = { version = "0.22", default-features = false, features = [ "persistence", "wgpu" ] }
 egui_extras = { version = "0.22" }
-eframe = { version = "0.22", default-features = false, features = [ "persistence", "wgpu", "serde" ] }
 egui_file = "0.9"
+egui_dnd = "0.4"
 tracing-subscriber = "0.3"
-#zenoh = { version = "0.7.0-rc", features = [ "default", "unstable" ] }
-zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
+zenoh = { version = "0.7.2-rc", features = [ "default", "unstable" ] }
+#zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
 #zenoh = { git = "https://github.com/sanri/zenoh.git", branch = "master", features = [ "default", "unstable" ] }
 async-std = { version = "=1.12", default-features = false }
 futures = "0.3"

@@ -1,9 +1,13 @@
 #[path = "../src/hex_viewer.rs"]
 mod hex_viewer;
 
+use eframe::{
+    egui::{CentralPanel, Color32, Context, Layout, RichText},
+    emath::Align,
+    AppCreator, Frame, HardwareAcceleration, NativeOptions,
+};
+
 use crate::hex_viewer::HexViewer;
-use eframe::{emath::Align, AppCreator, Frame, HardwareAcceleration, NativeOptions};
-use egui::{Color32, Context, Layout, RichText};
 
 struct AppHexViewer {
     viewer: HexViewer,
@@ -25,7 +29,7 @@ impl Default for AppHexViewer {
 
 impl eframe::App for AppHexViewer {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             self.viewer.show(ui);
         });
     }

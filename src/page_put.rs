@@ -1,5 +1,9 @@
-use eframe::emath::Align;
-use egui::{Color32, Context, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui};
+use eframe::{
+    egui,
+    egui::{Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui},
+    emath::Align,
+};
+use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
@@ -142,6 +146,19 @@ impl PagePutData {
             congestion_control: self.selected_congestion_control.into(),
             priority: self.selected_priority.into(),
             value,
+        }
+    }
+
+    fn new_from(ppd: &PagePutData) -> Self {
+        PagePutData {
+            id: 0,
+            name: ppd.name.clone(),
+            input_key: ppd.input_key.clone(),
+            selected_congestion_control: ppd.selected_congestion_control,
+            selected_priority: ppd.selected_priority,
+            selected_encoding: ppd.selected_encoding,
+            edit_str: ppd.edit_str.clone(),
+            info: None,
         }
     }
 
@@ -367,19 +384,23 @@ pub struct PagePut {
     pub events: VecDeque<Event>,
     pub data_map: BTreeMap<u64, PagePutData>,
     selected_data_id: u64,
-    data_id_count: u64,
+    put_id_count: u64,
+    dnd: DragDropUi,
+    dnd_items: Vec<DndItem>,
 }
 
 impl Default for PagePut {
     fn default() -> Self {
-        let mut btm = BTreeMap::new();
-        btm.insert(1, PagePutData::default());
-        PagePut {
+        let mut p = PagePut {
             events: VecDeque::new(),
-            data_map: btm,
+            data_map: BTreeMap::new(),
             selected_data_id: 1,
-            data_id_count: 1,
-        }
+            put_id_count: 0,
+            dnd: DragDropUi::default(),
+            dnd_items: Vec::new(),
+        };
+        p.add_put_data(PagePutData::default());
+        p
     }
 }
 
@@ -406,7 +427,7 @@ impl PagePut {
         egui::SidePanel::left("page_put_panel_left")
             .resizable(true)
             .show(ctx, |ui| {
-                self.show_puts(ui);
+                self.show_puts_name(ui);
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -421,46 +442,93 @@ impl PagePut {
         });
     }
 
-    fn show_puts(&mut self, ui: &mut Ui) {
+    fn show_puts_name(&mut self, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(" + ").code()).clicked() {
-                    self.add_put_data(PagePutData::default());
+                if ui
+                    .button(RichText::new(" + ").code())
+                    .on_hover_text("copy add")
+                    .clicked()
+                {
+                    if let Some(d) = self.data_map.get(&self.selected_data_id) {
+                        self.add_put_data(PagePutData::new_from(d));
+                    } else {
+                        self.add_put_data(PagePutData::default());
+                    }
                 };
 
-                if ui.button(RichText::new(" - ").code()).clicked() {
-                    if self.data_map.len() < 2 {
-                        return;
-                    }
-
-                    let _ = self.data_map.remove(&self.selected_data_id);
-                    self.selected_data_id = 0;
+                if ui
+                    .button(RichText::new(" - ").code())
+                    .on_hover_text("del")
+                    .clicked()
+                {
+                    self.del_put_data(self.selected_data_id);
                 };
             });
 
-            ui.label("");
+            ui.label(" ");
 
             ScrollArea::both()
-                .max_width(160.0)
+                .max_width(200.0)
                 .auto_shrink([true, false])
                 .show(ui, |ui| {
-                    for (i, d) in &self.data_map {
-                        let text = RichText::new(d.name.clone()).monospace();
-                        ui.selectable_value(&mut self.selected_data_id, *i, text);
+                    let response = self.dnd.ui::<DndItem>(
+                        ui,
+                        self.dnd_items.iter_mut(),
+                        |item, ui, handle| {
+                            ui.horizontal(|ui| {
+                                if let Some(d) = self.data_map.get(&item.key_id) {
+                                    handle.ui(ui, item, |ui| {
+                                        ui.label("·");
+                                    });
+
+                                    let text = RichText::new(d.name.as_str());
+                                    ui.selectable_value(
+                                        &mut self.selected_data_id,
+                                        item.key_id,
+                                        text,
+                                    );
+                                }
+                            });
+                        },
+                    );
+
+                    if let Some(response) = response.completed {
+                        shift_vec(response.from, response.to, &mut self.dnd_items);
                     }
                 });
         });
     }
 
     fn add_put_data(&mut self, mut data: PagePutData) {
-        self.data_id_count += 1;
-        data.id = self.data_id_count;
-        self.data_map.insert(self.data_id_count, data);
-        self.selected_data_id = self.data_id_count;
+        self.put_id_count += 1;
+        data.id = self.put_id_count;
+        self.data_map.insert(self.put_id_count, data);
+        self.selected_data_id = self.put_id_count;
+        self.dnd_items.push(DndItem::new(self.put_id_count));
+    }
+
+    fn del_put_data(&mut self, put_id: u64) {
+        if self.data_map.len() < 2 {
+            return;
+        }
+
+        let _ = self.data_map.remove(&put_id);
+        let mut del_index = None;
+        for (i, di) in self.dnd_items.iter().enumerate() {
+            if di.key_id == put_id {
+                del_index = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = del_index {
+            self.dnd_items.remove(i);
+        }
     }
 
     fn clean_all_put_data(&mut self) {
         self.data_map.clear();
+        self.dnd_items.clear();
         self.selected_data_id = 0;
     }
 
@@ -473,5 +541,21 @@ impl PagePut {
                 Some(RichText::new(s).color(Color32::RED))
             }
         }
+    }
+}
+
+struct DndItem {
+    key_id: u64,
+}
+
+impl DndItem {
+    fn new(k: u64) -> Self {
+        DndItem { key_id: k }
+    }
+}
+
+impl DragDropItem for DndItem {
+    fn id(&self) -> Id {
+        Id::new(format!("page_put dnd_item {}", self.key_id))
     }
 }

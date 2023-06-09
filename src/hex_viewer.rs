@@ -1,4 +1,4 @@
-use egui::{DragValue, RichText, ScrollArea, Ui};
+use eframe::egui::{DragValue, RichText, ScrollArea, Ui};
 
 pub struct HexViewer {
     buffer: Vec<u8>,

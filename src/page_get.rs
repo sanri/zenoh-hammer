@@ -1,7 +1,12 @@
 use arboard::Clipboard;
-use egui::{
-    Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui,
+use eframe::{
+    egui,
+    egui::{
+        Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle,
+        Ui,
+    },
 };
+use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -197,6 +202,22 @@ impl PageGetData {
             locality: self.selected_locality.into(),
             timeout: self.timeout,
             value,
+        }
+    }
+
+    fn new_from(pgd: &PageGetData) -> Self {
+        PageGetData {
+            id: 0,
+            name: pgd.name.clone(),
+            input_key: pgd.input_key.clone(),
+            selected_target: pgd.selected_target,
+            selected_consolidation: pgd.selected_consolidation,
+            selected_locality: pgd.selected_locality,
+            timeout: pgd.timeout,
+            edit_str: pgd.edit_str.clone(),
+            selected_encoding: pgd.selected_encoding,
+            replies: Vec::new(),
+            info: None,
         }
     }
 
@@ -764,23 +785,27 @@ pub struct PageGet {
     pub events: VecDeque<Event>,
     pub data_map: BTreeMap<u64, PageGetData>,
     selected_data_id: u64,
-    data_id_count: u64,
+    get_id_count: u64,
     show_view_reply_window: bool,
     view_reply_window: ViewReplyWindow,
+    dnd: DragDropUi,
+    dnd_items: Vec<DndItem>,
 }
 
 impl Default for PageGet {
     fn default() -> Self {
-        let mut btm = BTreeMap::new();
-        btm.insert(1, PageGetData::default());
-        PageGet {
+        let mut p = PageGet {
             events: VecDeque::new(),
-            data_map: btm,
+            data_map: BTreeMap::new(),
             selected_data_id: 1,
-            data_id_count: 1,
+            get_id_count: 0,
             show_view_reply_window: false,
             view_reply_window: ViewReplyWindow::default(),
-        }
+            dnd: DragDropUi::default(),
+            dnd_items: Vec::new(),
+        };
+        p.add_get_data(PageGetData::default());
+        p
     }
 }
 
@@ -807,7 +832,7 @@ impl PageGet {
         egui::SidePanel::left("page_get_panel_left")
             .resizable(true)
             .show(ctx, |ui| {
-                self.show_gets(ui);
+                self.show_gets_name(ui);
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -830,37 +855,88 @@ impl PageGet {
         });
     }
 
-    fn show_gets(&mut self, ui: &mut Ui) {
+    fn show_gets_name(&mut self, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(" + ").code()).clicked() {
-                    self.add_get_data(PageGetData::default());
+                if ui
+                    .button(RichText::new(" + ").code())
+                    .on_hover_text("copy add")
+                    .clicked()
+                {
+                    if let Some(d) = self.data_map.get(&self.selected_data_id) {
+                        self.add_get_data(PageGetData::new_from(d));
+                    } else {
+                        self.add_get_data(PageGetData::default());
+                    }
                 };
 
-                if ui.button(RichText::new(" - ").code()).clicked() {
-                    if self.data_map.len() < 2 {
-                        return;
-                    }
-
-                    let _ = self.data_map.remove(&self.selected_data_id);
-                    self.selected_data_id = 0;
+                if ui
+                    .button(RichText::new(" - ").code())
+                    .on_hover_text("del")
+                    .clicked()
+                {
+                    self.del_get_data(self.selected_data_id);
                 };
             });
 
-            ui.label("");
+            ui.label(" ");
 
-            for (i, d) in &self.data_map {
-                let text = RichText::new(d.name.clone()).monospace();
-                ui.selectable_value(&mut self.selected_data_id, *i, text);
-            }
+            ScrollArea::both()
+                .max_width(200.0)
+                .auto_shrink([true, false])
+                .show(ui, |ui| {
+                    let response = self.dnd.ui::<DndItem>(
+                        ui,
+                        self.dnd_items.iter_mut(),
+                        |item, ui, handle| {
+                            ui.horizontal(|ui| {
+                                if let Some(d) = self.data_map.get(&item.key_id) {
+                                    handle.ui(ui, item, |ui| {
+                                        ui.label("·");
+                                    });
+
+                                    let text = RichText::new(d.name.as_str());
+                                    ui.selectable_value(
+                                        &mut self.selected_data_id,
+                                        item.key_id,
+                                        text,
+                                    );
+                                }
+                            });
+                        },
+                    );
+
+                    if let Some(response) = response.completed {
+                        shift_vec(response.from, response.to, &mut self.dnd_items);
+                    }
+                });
         });
     }
 
     fn add_get_data(&mut self, mut data: PageGetData) {
-        self.data_id_count += 1;
-        data.id = self.data_id_count;
-        self.data_map.insert(self.data_id_count, data);
-        self.selected_data_id = self.data_id_count;
+        self.get_id_count += 1;
+        data.id = self.get_id_count;
+        self.data_map.insert(self.get_id_count, data);
+        self.selected_data_id = self.get_id_count;
+        self.dnd_items.push(DndItem::new(self.get_id_count))
+    }
+
+    fn del_get_data(&mut self, get_id: u64) {
+        if self.data_map.len() < 2 {
+            return;
+        }
+
+        let _ = self.data_map.remove(&get_id);
+        let mut del_index = None;
+        for (i, di) in self.dnd_items.iter().enumerate() {
+            if di.key_id == get_id {
+                del_index = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = del_index {
+            self.dnd_items.remove(i);
+        }
     }
 
     fn clean_all_get_data(&mut self) {
@@ -874,5 +950,21 @@ impl PageGet {
             d.info = None;
             d.replies.push(reply);
         }
+    }
+}
+
+struct DndItem {
+    key_id: u64,
+}
+
+impl DndItem {
+    fn new(k: u64) -> Self {
+        DndItem { key_id: k }
+    }
+}
+
+impl DragDropItem for DndItem {
+    fn id(&self) -> Id {
+        Id::new(format!("page_get dnd_item {}", self.key_id))
     }
 }

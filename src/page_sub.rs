@@ -1,8 +1,12 @@
 use arboard::Clipboard;
-use egui::{
-    Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
-    TextEdit, TextStyle, Ui,
+use eframe::{
+    egui,
+    egui::{
+        Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
+        TextEdit, TextStyle, Ui,
+    },
 };
+use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
 use egui_extras::{Column, TableBody, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -37,12 +41,6 @@ pub struct DataItem {
     key_expr: String,
 }
 
-// impl DataItem {
-//     fn new(name: String, key_expr: String) -> DataItem {
-//         DataItem { name, key_expr }
-//     }
-// }
-
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Data {
     subscribers: Vec<DataItem>,
@@ -55,6 +53,8 @@ pub struct PageSub {
     show_view_value_window: bool,
     view_value_window: ViewValueWindow,
     sub_data_group: BTreeMap<u64, PageSubData>, // <sub id, group>
+    dnd: DragDropUi,
+    dnd_items: Vec<DndItem>,
 }
 
 impl Default for PageSub {
@@ -66,6 +66,8 @@ impl Default for PageSub {
             show_view_value_window: false,
             view_value_window: ViewValueWindow::default(),
             sub_data_group: BTreeMap::new(),
+            dnd: DragDropUi::default(),
+            dnd_items: Vec::new(),
         };
         p.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
         p
@@ -120,51 +122,95 @@ impl PageSub {
         self.sub_id_count += 1;
         self.sub_data_group.insert(self.sub_id_count, data);
         self.selected_sub_id = self.sub_id_count;
+        self.dnd_items.push(DndItem::new(self.sub_id_count))
+    }
+
+    fn del_sub_data(&mut self, sub_id: u64) {
+        if self.sub_data_group.len() < 2 {
+            return;
+        }
+
+        let mut flag = false;
+        if let Some(data_group) = self.sub_data_group.get(&sub_id) {
+            flag = !data_group.subscribed;
+        }
+        if flag {
+            let _ = self.sub_data_group.remove(&sub_id);
+            let mut del_index = None;
+            for (i, di) in self.dnd_items.iter().enumerate() {
+                if di.key_id == sub_id {
+                    del_index = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = del_index {
+                self.dnd_items.remove(i);
+            }
+        }
     }
 
     fn clean_all_sub_data(&mut self) {
         self.sub_data_group.clear();
+        self.dnd_items.clear();
         self.selected_sub_id = 0;
     }
 
     fn show_subscribers_name(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            if ui.button(RichText::new(" + ").code()).clicked() {
-                self.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
+            if ui
+                .button(RichText::new(" + ").code())
+                .on_hover_text("copy add")
+                .clicked()
+            {
+                if let Some(d) = self.sub_data_group.get(&self.selected_sub_id) {
+                    self.add_sub_data(PageSubData::new_from(d));
+                } else {
+                    self.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
+                }
             }
 
-            if ui.button(RichText::new(" - ").code()).clicked() {
-                if self.sub_data_group.len() < 2 {
-                    return;
-                }
-
-                let mut flag = false;
-                if let Some(data_group) = self.sub_data_group.get(&self.selected_sub_id) {
-                    flag = !data_group.subscribed;
-                }
-                if flag {
-                    self.sub_data_group.remove(&self.selected_sub_id);
-                    self.selected_sub_id = 0;
-                }
+            if ui
+                .button(RichText::new(" - ").code())
+                .on_hover_text("del")
+                .clicked()
+            {
+                self.del_sub_data(self.selected_sub_id);
             }
         });
 
         ui.label(" ");
 
-        for (i, d) in &self.sub_data_group {
-            let s = if d.subscribed {
-                format!("* {}", d.name)
-            } else {
-                d.name.clone()
-            };
-            let text = RichText::new(s).monospace();
-            if ui
-                .selectable_label((*i) == self.selected_sub_id, text)
-                .clicked()
-            {
-                self.selected_sub_id = *i;
-            }
-        }
+        ScrollArea::both()
+            .max_width(200.0)
+            .auto_shrink([true, false])
+            .show(ui, |ui| {
+                let response =
+                    self.dnd
+                        .ui::<DndItem>(ui, self.dnd_items.iter_mut(), |item, ui, handle| {
+                            ui.horizontal(|ui| {
+                                if let Some(d) = self.sub_data_group.get(&item.key_id) {
+                                    handle.ui(ui, item, |ui| {
+                                        ui.label("·");
+                                    });
+
+                                    let text = if d.subscribed {
+                                        RichText::new(d.name.as_str()).underline().strong()
+                                    } else {
+                                        RichText::new(d.name.as_str())
+                                    };
+                                    ui.selectable_value(
+                                        &mut self.selected_sub_id,
+                                        item.key_id,
+                                        text,
+                                    );
+                                }
+                            });
+                        });
+
+                if let Some(response) = response.completed {
+                    shift_vec(response.from, response.to, &mut self.dnd_items);
+                }
+            });
     }
 
     fn show_name_key(&mut self, ui: &mut Ui) {
@@ -448,6 +494,22 @@ impl PageSub {
     }
 }
 
+struct DndItem {
+    key_id: u64,
+}
+
+impl DndItem {
+    fn new(k: u64) -> Self {
+        DndItem { key_id: k }
+    }
+}
+
+impl DragDropItem for DndItem {
+    fn id(&self) -> Id {
+        Id::new(format!("page_sub dnd_item {}", self.key_id))
+    }
+}
+
 pub struct DataValues {
     deque: VecDeque<(Value, SampleKind, Option<Timestamp>)>,
     buffer_size: usize,
@@ -526,6 +588,10 @@ impl PageSubData {
             key_tree: Tree::default(),
             map: BTreeMap::new(),
         }
+    }
+
+    fn new_from(psd: &Self) -> Self {
+        Self::new(psd.name.clone(), psd.key_expr.clone())
     }
 
     fn update_tree(&mut self) {

@@ -1,5 +1,9 @@
-use eframe::{emath::Align, Frame};
-use egui::{Color32, Context, Layout, RichText};
+use eframe::{
+    egui,
+    egui::{Color32, Context, Layout, RichText},
+    emath::Align,
+    Frame,
+};
 use egui_file::{DialogType, FileDialog};
 use flume::{unbounded, TryRecvError};
 use serde::{Deserialize, Serialize};

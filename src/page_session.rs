@@ -1,6 +1,9 @@
-use egui::{
-    Align, CollapsingHeader, Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit,
-    TextStyle,
+use eframe::{
+    egui,
+    egui::{
+        Align, CollapsingHeader, Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit,
+        TextStyle,
+    },
 };
 use serde_json;
 use std::{collections::VecDeque, str::FromStr};
