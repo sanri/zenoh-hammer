@@ -85,11 +85,12 @@ impl PageSub {
     }
 
     pub fn create_store_data(&self) -> Data {
-        let mut data = Vec::with_capacity(self.sub_data_group.len());
-        for (_, d) in &self.sub_data_group {
-            let data_item = d.to();
-            data.push(data_item);
-        }
+        let data = self
+            .dnd_items
+            .iter()
+            .filter_map(|k| self.sub_data_group.get(&k.key_id))
+            .map(|d| d.to())
+            .collect();
         Data { subscribers: data }
     }
 

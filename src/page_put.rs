@@ -415,11 +415,12 @@ impl PagePut {
     }
 
     pub fn create_store_data(&self) -> Data {
-        let mut data = Vec::with_capacity(self.data_map.len());
-        for (_, d) in &self.data_map {
-            let data_item = d.to();
-            data.push(data_item);
-        }
+        let data = self
+            .dnd_items
+            .iter()
+            .filter_map(|k| self.data_map.get(&k.key_id))
+            .map(|d| d.to())
+            .collect();
         Data { puts: data }
     }
 
