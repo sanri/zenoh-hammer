@@ -144,6 +144,11 @@ async fn loop_zenoh(
             }
         }
     } // loop 'a
+
+    for (sub_id, sender) in subscriber_senders {
+        let _ = sender.send(());
+        let _ = sender_to_gui.send(MsgZenohToGui::DelSubRes(sub_id));
+    }
 }
 
 async fn task_subscriber(
