@@ -14,6 +14,7 @@ use std::{
     str::FromStr,
     time::Duration,
 };
+use zenoh::prelude::ZenohId;
 use zenoh::{
     buffers::reader::{HasReader, Reader},
     prelude::{
@@ -24,10 +25,7 @@ use zenoh::{
 };
 
 use crate::{
-    app::{
-        f64_create_rich_text, i64_create_rich_text, json_create_rich_text,
-        text_plant_create_rich_text, ZenohValue,
-    },
+    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
     hex_viewer::HexViewer,
     zenoh::QueryData,
 };
@@ -356,6 +354,14 @@ impl PageGetData {
                         KnownEncoding::AppJson,
                         KnownEncoding::AppInteger,
                         KnownEncoding::AppFloat,
+                        KnownEncoding::AppSql,
+                        KnownEncoding::AppXml,
+                        KnownEncoding::AppXhtmlXml,
+                        KnownEncoding::TextHtml,
+                        KnownEncoding::TextXml,
+                        KnownEncoding::TextCss,
+                        KnownEncoding::TextCsv,
+                        KnownEncoding::TextJavascript,
                     ];
                     for option in options {
                         ui.selectable_value(
@@ -375,23 +381,21 @@ impl PageGetData {
                 show_grid(ui);
             });
 
+        let text_edit_multiline = |edit_str: &mut String, ui: &mut Ui| {
+            ui.add(
+                TextEdit::multiline(edit_str)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(3)
+                    .code_editor(),
+            );
+        };
         match self.selected_encoding {
             KnownEncoding::Empty => {}
             KnownEncoding::TextPlain => {
-                ui.add(
-                    TextEdit::multiline(&mut self.edit_str)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(3)
-                        .code_editor(),
-                );
+                text_edit_multiline(&mut self.edit_str, ui);
             }
             KnownEncoding::AppJson => {
-                ui.add(
-                    TextEdit::multiline(&mut self.edit_str)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(3)
-                        .code_editor(),
-                );
+                text_edit_multiline(&mut self.edit_str, ui);
             }
             KnownEncoding::AppInteger => {
                 ui.add(TextEdit::singleline(&mut self.edit_str));
@@ -400,14 +404,39 @@ impl PageGetData {
                 ui.add(TextEdit::singleline(&mut self.edit_str));
             }
             KnownEncoding::TextJson => {
-                ui.add(
-                    TextEdit::multiline(&mut self.edit_str)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(3)
-                        .code_editor(),
-                );
+                text_edit_multiline(&mut self.edit_str, ui);
             }
-            _ => {}
+            KnownEncoding::AppOctetStream => {}
+            KnownEncoding::AppCustom => {}
+            KnownEncoding::AppProperties => {}
+            KnownEncoding::AppSql => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXhtmlXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {}
+            KnownEncoding::TextHtml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextCss => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextCsv => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextJavascript => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::ImageJpeg => {}
+            KnownEncoding::ImagePng => {}
+            KnownEncoding::ImageGif => {}
         };
     }
 
@@ -456,26 +485,18 @@ impl PageGetData {
                                     Some(s) => s.to_string(),
                                 };
                                 let text_type = format!("{}", o.encoding);
-                                let text_button = match o.encoding {
-                                    Encoding::Exact(ex) => match ex {
-                                        KnownEncoding::TextPlain => {
-                                            text_plant_create_rich_text(&o.value)
-                                        }
-                                        KnownEncoding::AppJson => json_create_rich_text(&o.value),
-                                        KnownEncoding::AppInteger => i64_create_rich_text(&o.value),
-                                        KnownEncoding::AppFloat => f64_create_rich_text(&o.value),
-                                        KnownEncoding::TextJson => json_create_rich_text(&o.value),
-                                        _ => RichText::new("...").monospace(),
-                                    },
-                                    Encoding::WithSuffix(_, _) => RichText::new("...").monospace(),
-                                };
+                                let text_button = value_create_rich_text(&o.value);
                                 row.col(|ui| {
                                     ui.label(text_key);
                                 });
                                 row.col(|ui| {
-                                    if ui.button(text_button).clicked() {
-                                        reply_window.reply = Some(reply.clone());
-                                        *show_window = true;
+                                    if let Some(text) = text_button {
+                                        if ui.button(text).clicked() {
+                                            reply_window.reply = Some(reply.clone());
+                                            *show_window = true;
+                                        }
+                                    } else {
+                                        ui.label("...");
                                     }
                                 });
                                 row.col(|ui| {
@@ -524,10 +545,6 @@ impl PageGetData {
         };
         let v = match self.selected_encoding {
             KnownEncoding::Empty => None,
-            KnownEncoding::TextPlain => {
-                let v = Value::from(self.edit_str.as_str());
-                Some(v)
-            }
             KnownEncoding::AppJson => {
                 if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
                     let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -569,7 +586,17 @@ impl PageGetData {
                     Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJson.into());
                 Some(v)
             }
-            _ => None,
+            KnownEncoding::AppOctetStream => None,
+            KnownEncoding::AppCustom => None,
+            KnownEncoding::AppProperties => None,
+            KnownEncoding::AppXWwwFormUrlencoded => None,
+            KnownEncoding::ImageJpeg => None,
+            KnownEncoding::ImagePng => None,
+            KnownEncoding::ImageGif => None,
+            str_encoding => {
+                let v = Value::from(self.edit_str.as_str()).encoding(str_encoding.into());
+                Some(v)
+            }
         };
         let d = QueryData {
             id: self.id,
@@ -626,18 +653,9 @@ impl ViewReplyWindow {
                 Some(s) => s,
             };
 
-            ui.horizontal(|ui| {
-                if ui.button("replier id:").on_hover_text("copy").clicked() {
-                    let mut clipboard = Clipboard::new().unwrap();
-                    clipboard.set_text(reply.replier_id.to_string()).unwrap();
-                }
-                let text = RichText::new(reply.replier_id.to_string()).monospace();
-                ui.label(text);
-            });
-
             match &reply.sample {
                 Ok(sample) => {
-                    Self::show_base_info(sample, ui);
+                    Self::show_base_info(reply.replier_id, sample, ui);
 
                     ui.separator();
 
@@ -679,6 +697,15 @@ impl ViewReplyWindow {
                     };
                 }
                 Err(value) => {
+                    ui.horizontal(|ui| {
+                        if ui.button("replier id:").on_hover_text("copy").clicked() {
+                            let mut clipboard = Clipboard::new().unwrap();
+                            clipboard.set_text(reply.replier_id.to_string()).unwrap();
+                        }
+                        let text = RichText::new(reply.replier_id.to_string()).monospace();
+                        ui.label(text);
+                    });
+
                     let text: RichText = match String::try_from(value) {
                         Ok(o) => RichText::new(o).monospace().color(Color32::RED),
                         Err(e) => RichText::new(e.to_string()).monospace().color(Color32::RED),
@@ -744,9 +771,16 @@ impl ViewReplyWindow {
         }
     }
 
-    fn show_base_info(sample: &Sample, ui: &mut Ui) {
+    fn show_base_info(replier_id: ZenohId, sample: &Sample, ui: &mut Ui) {
         let show_ui = |ui: &mut Ui| {
-            // ui.label("key:  ");
+            if ui.button("replier id:").on_hover_text("copy").clicked() {
+                let mut clipboard = Clipboard::new().unwrap();
+                clipboard.set_text(replier_id.to_string()).unwrap();
+            }
+            let text = RichText::new(replier_id.to_string()).monospace();
+            ui.label(text);
+            ui.end_row();
+
             if ui.button("key:").on_hover_text("copy").clicked() {
                 let mut clipboard = Clipboard::new().unwrap();
                 clipboard.set_text(sample.key_expr.as_str()).unwrap();

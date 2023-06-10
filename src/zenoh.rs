@@ -194,7 +194,12 @@ async fn task_query(
     .await
     .unwrap();
 
-    while let Ok(reply) = replies.recv_async().await {
+    while let Ok(mut reply) = replies.recv_async().await {
+        if let Ok(sample) = &mut reply.sample {
+            if sample.timestamp.is_none() {
+                sample.timestamp = Some(new_reception_timestamp());
+            }
+        }
         let msg = MsgZenohToGui::GetRes(Box::new((d.id, reply)));
         if let Err(e) = sender_to_gui.send(msg) {
             println!("{}", e);

@@ -251,6 +251,14 @@ impl PagePutData {
                         KnownEncoding::AppJson,
                         KnownEncoding::AppInteger,
                         KnownEncoding::AppFloat,
+                        KnownEncoding::AppSql,
+                        KnownEncoding::AppXml,
+                        KnownEncoding::AppXhtmlXml,
+                        KnownEncoding::TextHtml,
+                        KnownEncoding::TextXml,
+                        KnownEncoding::TextCss,
+                        KnownEncoding::TextCsv,
+                        KnownEncoding::TextJavascript,
                     ];
                     for option in options {
                         ui.selectable_value(
@@ -271,47 +279,67 @@ impl PagePutData {
             });
 
         ui.label("value: ");
-        ScrollArea::vertical()
-            .id_source("value scroll area")
-            .show(ui, |ui| {
-                match self.selected_encoding {
-                    KnownEncoding::TextPlain => {
-                        ui.add(
-                            TextEdit::multiline(&mut self.edit_str)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(3)
-                                .code_editor(),
-                        );
-                    }
-                    KnownEncoding::AppJson => {
-                        ui.add(
-                            TextEdit::multiline(&mut self.edit_str)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(3)
-                                .code_editor(),
-                        );
-                    }
-                    KnownEncoding::AppInteger => {
-                        ui.add(TextEdit::singleline(&mut self.edit_str));
-                    }
-                    KnownEncoding::AppFloat => {
-                        ui.add(TextEdit::singleline(&mut self.edit_str));
-                    }
-                    KnownEncoding::TextJson => {
-                        ui.add(
-                            TextEdit::multiline(&mut self.edit_str)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(3)
-                                .code_editor(),
-                        );
-                    }
-                    _ => {}
-                }
+        let text_edit_multiline = |edit_str: &mut String, ui: &mut Ui| {
+            ui.add(
+                TextEdit::multiline(edit_str)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(3)
+                    .code_editor(),
+            );
+        };
+        match self.selected_encoding {
+            KnownEncoding::TextPlain => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppJson => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppInteger => {
+                ui.add(TextEdit::singleline(&mut self.edit_str));
+            }
+            KnownEncoding::AppFloat => {
+                ui.add(TextEdit::singleline(&mut self.edit_str));
+            }
+            KnownEncoding::TextJson => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::Empty => {}
+            KnownEncoding::AppOctetStream => {}
+            KnownEncoding::AppCustom => {}
+            KnownEncoding::AppProperties => {}
+            KnownEncoding::AppSql => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXhtmlXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {}
+            KnownEncoding::TextHtml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextXml => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextCss => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextCsv => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::TextJavascript => {
+                text_edit_multiline(&mut self.edit_str, ui);
+            }
+            KnownEncoding::ImageJpeg => {}
+            KnownEncoding::ImagePng => {}
+            KnownEncoding::ImageGif => {}
+        }
 
-                if let Some(rt) = &self.info {
-                    ui.label(rt.clone());
-                };
-            });
+        if let Some(rt) = &self.info {
+            ui.label(rt.clone());
+        };
     }
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
@@ -325,7 +353,6 @@ impl PagePutData {
             }
         };
         let value = match self.selected_encoding {
-            KnownEncoding::TextPlain => Value::from(self.edit_str.as_str()),
             KnownEncoding::AppJson => {
                 if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
                     let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -364,9 +391,31 @@ impl PagePutData {
                 }
                 Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJson.into())
             }
-            _ => {
+            KnownEncoding::Empty => {
                 return;
             }
+            KnownEncoding::AppOctetStream => {
+                return;
+            }
+            KnownEncoding::AppCustom => {
+                return;
+            }
+            KnownEncoding::AppProperties => {
+                return;
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {
+                return;
+            }
+            KnownEncoding::ImageJpeg => {
+                return;
+            }
+            KnownEncoding::ImagePng => {
+                return;
+            }
+            KnownEncoding::ImageGif => {
+                return;
+            }
+            str_encoding => Value::from(self.edit_str.as_str()).encoding(str_encoding.into()),
         };
         let put_data = PutData {
             id: self.id,

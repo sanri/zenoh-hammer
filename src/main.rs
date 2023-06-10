@@ -25,5 +25,5 @@ fn main() {
         cc.egui_ctx.set_fonts(fonts);
         Box::new(hammer_app)
     });
-    let _ = eframe::run_native("Zenoh 🔨", options, create);
+    let _ = eframe::run_native("Zenoh Hammer", options, create);
 }

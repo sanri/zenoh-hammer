@@ -15,16 +15,13 @@ use std::{
 };
 use zenoh::{
     buffers::reader::{HasReader, Reader},
-    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
+    prelude::{KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
     sample::Sample,
     time::Timestamp,
 };
 
 use crate::{
-    app::{
-        f64_create_rich_text, i64_create_rich_text, json_create_rich_text,
-        text_plant_create_rich_text,
-    },
+    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text},
     hex_viewer::HexViewer,
 };
 
@@ -363,48 +360,14 @@ impl PageSub {
                 if let Some(sd) = data_group.map.get(selected_key.as_str()) {
                     for (d, k, t) in &sd.deque {
                         body.row(20.0, |mut row| {
-                            row.col(|ui| match d.encoding {
-                                Encoding::Exact(ke) => match ke {
-                                    KnownEncoding::TextPlain => {
-                                        let text: RichText = text_plant_create_rich_text(d);
-                                        if ui.button(text).clicked() {
-                                            self.show_view_value_window = true;
-                                            self.view_value_window.clone_from(d, key, k, t);
-                                        }
+                            row.col(|ui| {
+                                let text: Option<RichText> = value_create_rich_text(d);
+                                if let Some(text) = text {
+                                    if ui.button(text).clicked() {
+                                        self.show_view_value_window = true;
+                                        self.view_value_window.clone_from(d, key, k, t);
                                     }
-                                    KnownEncoding::AppJson => {
-                                        let text: RichText = json_create_rich_text(d);
-                                        if ui.button(text).clicked() {
-                                            self.show_view_value_window = true;
-                                            self.view_value_window.clone_from(d, key, k, t);
-                                        }
-                                    }
-                                    KnownEncoding::AppInteger => {
-                                        let text: RichText = i64_create_rich_text(d);
-                                        if ui.button(text).clicked() {
-                                            self.show_view_value_window = true;
-                                            self.view_value_window.clone_from(d, key, k, t);
-                                        }
-                                    }
-                                    KnownEncoding::AppFloat => {
-                                        let text: RichText = f64_create_rich_text(d);
-                                        if ui.button(text).clicked() {
-                                            self.show_view_value_window = true;
-                                            self.view_value_window.clone_from(d, key, k, t);
-                                        }
-                                    }
-                                    KnownEncoding::TextJson => {
-                                        let text: RichText = json_create_rich_text(d);
-                                        if ui.button(text).clicked() {
-                                            self.show_view_value_window = true;
-                                            self.view_value_window.clone_from(d, key, k, t);
-                                        }
-                                    }
-                                    _ => {
-                                        ui.label("...");
-                                    }
-                                },
-                                Encoding::WithSuffix(_, _) => {
+                                } else {
                                     ui.label("...");
                                 }
                             });
@@ -868,30 +831,10 @@ impl ViewValueWindow {
     fn show_page_parse(&mut self, ui: &mut Ui) {
         match self.value.encoding.prefix() {
             KnownEncoding::TextPlain => {
-                let mut s = match String::try_from(&self.value) {
-                    Ok(s) => s,
-                    Err(e) => format!("{}", e),
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
+                show_parse_string(&self.value, ui);
             }
             KnownEncoding::AppJson => {
-                let mut s: String = match serde_json::Value::try_from(&self.value) {
-                    Ok(o) => {
-                        format!("{:#}", o)
-                    }
-                    Err(e) => {
-                        format!("{}", e)
-                    }
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
+                show_parse_json(&self.value, ui);
             }
             KnownEncoding::AppInteger => {
                 let text: RichText = i64_create_rich_text(&self.value);
@@ -902,23 +845,75 @@ impl ViewValueWindow {
                 ui.label(text);
             }
             KnownEncoding::TextJson => {
-                let mut s: String = match serde_json::Value::try_from(&self.value) {
-                    Ok(o) => {
-                        format!("{:#}", o)
-                    }
-                    Err(e) => {
-                        format!("{}", e)
-                    }
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
+                show_parse_json(&self.value, ui);
             }
-            _ => {}
+            KnownEncoding::Empty => {}
+            KnownEncoding::AppOctetStream => {}
+            KnownEncoding::AppCustom => {}
+            KnownEncoding::AppProperties => {}
+            KnownEncoding::AppSql => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::AppXml => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::AppXhtmlXml => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {}
+            KnownEncoding::TextHtml => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::TextXml => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::TextCss => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::TextCsv => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::TextJavascript => {
+                show_parse_json(&self.value, ui);
+            }
+            KnownEncoding::ImageJpeg => {}
+            KnownEncoding::ImagePng => {}
+            KnownEncoding::ImageGif => {}
         }
     }
+}
+
+fn show_parse_string(value: &Value, ui: &mut Ui) {
+    match String::try_from(value) {
+        Ok(mut s) => {
+            ui.add(
+                TextEdit::multiline(&mut s)
+                    .desired_width(f32::INFINITY)
+                    .code_editor(),
+            );
+        }
+        Err(e) => {
+            let text = RichText::new(format!("{}", e)).color(Color32::RED);
+            ui.label(text);
+        }
+    };
+}
+
+fn show_parse_json(value: &Value, ui: &mut Ui) {
+    match serde_json::Value::try_from(value) {
+        Ok(o) => {
+            let mut s = format!("{:#}", o);
+            ui.add(
+                TextEdit::multiline(&mut s)
+                    .desired_width(f32::INFINITY)
+                    .code_editor(),
+            );
+        }
+        Err(e) => {
+            let text = RichText::new(format!("{}", e)).color(Color32::RED);
+            ui.label(text);
+        }
+    };
 }
 
 fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {

@@ -12,7 +12,7 @@ use std::{path::PathBuf, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 use zenoh::{
-    prelude::{KnownEncoding, SplitBuffer},
+    prelude::{Encoding, KnownEncoding, SplitBuffer},
     value::Value,
 };
 
@@ -373,6 +373,35 @@ impl HammerApp {
                 }
             }
         }
+    }
+}
+
+pub fn value_create_rich_text(d: &Value) -> Option<RichText> {
+    match d.encoding {
+        Encoding::Exact(ke) => match ke {
+            KnownEncoding::AppOctetStream => Some(RichText::new("...")),
+            KnownEncoding::TextPlain => Some(text_plant_create_rich_text(d)),
+            KnownEncoding::AppJson => Some(json_create_rich_text(d)),
+            KnownEncoding::AppInteger => Some(i64_create_rich_text(d)),
+            KnownEncoding::AppFloat => Some(f64_create_rich_text(d)),
+            KnownEncoding::TextJson => Some(json_create_rich_text(d)),
+            KnownEncoding::Empty => None,
+            KnownEncoding::AppCustom => Some(RichText::new("...")),
+            KnownEncoding::AppProperties => None,
+            KnownEncoding::AppSql => Some(RichText::new("...")),
+            KnownEncoding::AppXml => Some(RichText::new("...")),
+            KnownEncoding::AppXhtmlXml => Some(RichText::new("...")),
+            KnownEncoding::AppXWwwFormUrlencoded => None,
+            KnownEncoding::TextHtml => Some(RichText::new("...")),
+            KnownEncoding::TextXml => Some(RichText::new("...")),
+            KnownEncoding::TextCss => Some(RichText::new("...")),
+            KnownEncoding::TextCsv => Some(RichText::new("...")),
+            KnownEncoding::TextJavascript => Some(RichText::new("...")),
+            KnownEncoding::ImageJpeg => None,
+            KnownEncoding::ImagePng => None,
+            KnownEncoding::ImageGif => None,
+        },
+        Encoding::WithSuffix(_, _) => None,
     }
 }
 
