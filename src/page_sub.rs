@@ -17,7 +17,7 @@ use zenoh::{
     buffers::reader::{HasReader, Reader},
     prelude::{KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
     sample::Sample,
-    time::Timestamp,
+    time::{new_reception_timestamp, Timestamp, TimestampId, NTP64},
 };
 
 use crate::{
@@ -321,8 +321,10 @@ impl PageSub {
 
         let selected_key = data_group.selected_key.clone();
 
+        let mut frequency: Option<Frequency> = None;
         if let Some(dv) = data_group.map.get(&selected_key) {
             data_group.buffer_size = dv.buffer_size as u32;
+            frequency = dv.compute_frequency();
         }
 
         ui.vertical(|ui| {
@@ -352,6 +354,12 @@ impl PageSub {
                     if let Some(data) = data_group.map.get_mut(&selected_key) {
                         data.set_buffer_size(data_group.buffer_size_tmp as usize);
                     }
+                }
+
+                if let Some(fr) = frequency {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(fr.to_string());
+                    });
                 }
             });
 
@@ -474,9 +482,32 @@ impl DragDropItem for DndItem {
     }
 }
 
-pub struct DataValues {
+enum Frequency {
+    Hz(f32), // 单位时间内收到的消息数量. > 1.0
+    S(u32),  // 距离上次收到消息过去多少秒. > 1
+}
+
+impl Frequency {
+    fn to_string(&self) -> String {
+        match self {
+            Frequency::Hz(v) => {
+                if *v < 10.0 {
+                    format!("{:.1} Hz", *v)
+                } else {
+                    format!("{:.0} Hz", *v)
+                }
+            }
+            Frequency::S(v) => {
+                format!("{} s", *v)
+            }
+        }
+    }
+}
+
+struct DataValues {
     deque: VecDeque<(Value, SampleKind, Option<Timestamp>)>,
     buffer_size: usize,
+    lately_local_timestamp: Timestamp,
 }
 
 impl Default for DataValues {
@@ -484,23 +515,34 @@ impl Default for DataValues {
         DataValues {
             deque: VecDeque::with_capacity(VALUE_BUFFER_SIZE_DEFAULT),
             buffer_size: VALUE_BUFFER_SIZE_DEFAULT,
+            lately_local_timestamp: new_reception_timestamp(),
         }
     }
 }
 
 impl DataValues {
-    pub fn add_data(&mut self, d: (Value, SampleKind, Option<Timestamp>)) {
+    fn add_data(&mut self, d: (Value, SampleKind, Option<Timestamp>)) {
+        let local_timestamp = if let Some(t) = d.2 {
+            if *t.get_id() == TimestampId::try_from([1]).unwrap() {
+                t
+            } else {
+                new_reception_timestamp()
+            }
+        } else {
+            new_reception_timestamp()
+        };
+        self.lately_local_timestamp = local_timestamp;
         if self.deque.len() == self.buffer_size {
             let _ = self.deque.pop_front();
         }
         let _ = self.deque.push_back(d);
     }
 
-    pub fn clear(&mut self) {
+    fn clear(&mut self) {
         self.deque.clear();
     }
 
-    pub fn set_buffer_size(&mut self, size: usize) {
+    fn set_buffer_size(&mut self, size: usize) {
         self.buffer_size = if size < VALUE_BUFFER_SIZE_DEFAULT {
             VALUE_BUFFER_SIZE_DEFAULT
         } else {
@@ -509,6 +551,46 @@ impl DataValues {
         while self.deque.len() >= self.buffer_size {
             let _ = self.deque.pop_front();
         }
+    }
+
+    fn compute_frequency(&self) -> Option<Frequency> {
+        if self.deque.is_empty() {
+            return None;
+        }
+
+        let timestamp_now = new_reception_timestamp();
+        let dt = timestamp_now
+            .get_diff_duration(&self.lately_local_timestamp)
+            .as_secs() as u32;
+        if dt >= 1 {
+            return Some(Frequency::S(dt));
+        } else {
+            if self.deque.len() == 1 {
+                return Some(Frequency::Hz(1.0));
+            }
+        }
+
+        // 检索最多100条或最近10s内的记录
+        let mut ntp_max = NTP64(0u64);
+        let mut ntp_min = NTP64(u64::MAX);
+        let mut count = 0f32;
+        let mut time = 1f32;
+        for (i, (_, _, t)) in self.deque.iter().rev().enumerate() {
+            let ntp = *t.unwrap().get_time();
+            ntp_max = ntp_max.max(ntp);
+            ntp_min = ntp_min.min(ntp);
+            count = (i + 1) as f32;
+            time = (ntp_max - ntp_min).to_duration().as_secs_f32();
+            if i >= 100 {
+                break;
+            }
+            if time >= 10.0 {
+                break;
+            }
+        }
+        let fr = count / time;
+
+        Some(Frequency::Hz(fr))
     }
 }
 
