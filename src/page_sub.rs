@@ -579,7 +579,7 @@ impl DataValues {
             let ntp = *t.unwrap().get_time();
             ntp_max = ntp_max.max(ntp);
             ntp_min = ntp_min.min(ntp);
-            count = (i + 1) as f32;
+            count = i as f32;
             time = (ntp_max - ntp_min).to_duration().as_secs_f32();
             if i >= 100 {
                 break;
