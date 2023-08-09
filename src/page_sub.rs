@@ -1,28 +1,30 @@
 use arboard::Clipboard;
+use eframe::egui::plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
+use eframe::egui::{ColorImage, TextureOptions};
 use eframe::{
     egui,
     egui::{
         Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
-        TextEdit, TextStyle, Ui,
+        TextEdit, TextStyle, TextureHandle, Ui,
     },
 };
 use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
 use egui_extras::{Column, TableBody, TableBuilder};
+use image;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     str::FromStr,
 };
 use zenoh::{
-    buffers::reader::{HasReader, Reader},
-    prelude::{KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
+    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
     sample::Sample,
     time::{new_reception_timestamp, Timestamp, TimestampId, NTP64},
 };
 
 use crate::{
-    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text},
-    hex_viewer::HexViewer,
+    app::value_create_rich_text,
+    hex_viewer::{HexViewer, HEX_VIEWER_SIZE},
 };
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
@@ -787,7 +789,11 @@ enum ViewValueWindowPage {
 pub struct ViewValueWindow {
     selected_page: ViewValueWindowPage,
     key: String,
-    value: Value,
+    encoding: Encoding,
+    value_str: Option<String>,
+    value_image: Option<ColorImage>,
+    image_texture_handle: Option<TextureHandle>,
+    error_str: Option<String>,
     kind: SampleKind,
     timestamp: Option<Timestamp>,
     hex_viewer: HexViewer,
@@ -798,7 +804,11 @@ impl Default for ViewValueWindow {
         ViewValueWindow {
             selected_page: ViewValueWindowPage::Parse,
             key: String::new(),
-            value: Value::empty(),
+            encoding: Encoding::default(),
+            value_str: None,
+            value_image: None,
+            image_texture_handle: None,
+            error_str: None,
             kind: SampleKind::Put,
             timestamp: None,
             hex_viewer: HexViewer::new(vec![]),
@@ -835,6 +845,99 @@ impl ViewValueWindow {
         });
     }
 
+    fn clone_from_bin(&mut self) {
+        self.value_str = None;
+        self.value_image = None;
+        self.error_str = None;
+        self.image_texture_handle = None;
+    }
+
+    fn clone_from_str(&mut self, data: Vec<u8>) {
+        match String::from_utf8(data) {
+            Ok(s) => {
+                self.value_str = Some(s);
+                self.value_image = None;
+                self.error_str = None;
+            }
+            Err(e) => {
+                self.value_str = None;
+                self.value_image = None;
+                self.error_str = Some(e.to_string());
+            }
+        }
+        self.image_texture_handle = None;
+    }
+
+    fn clone_from_str_to_json(&mut self, data: Vec<u8>) {
+        match String::from_utf8(data) {
+            Ok(s) => {
+                match serde_json::value::Value::from_str(s.as_str()) {
+                    Ok(v) => {
+                        self.value_str = Some(serde_json::to_string_pretty(&v).unwrap());
+                        self.error_str = None;
+                    }
+                    Err(e) => {
+                        self.value_str = Some(s);
+                        self.error_str = Some(e.to_string());
+                    }
+                }
+                self.value_image = None;
+            }
+            Err(e) => {
+                self.value_str = None;
+                self.value_image = None;
+                self.error_str = Some(e.to_string());
+            }
+        }
+        self.image_texture_handle = None;
+    }
+
+    fn clone_from_str_to<T>(&mut self, data: Vec<u8>)
+    where
+        <T as FromStr>::Err: std::fmt::Display,
+        T: FromStr,
+    {
+        match String::from_utf8(data) {
+            Ok(s) => {
+                if let Err(e) = s.parse::<T>() {
+                    self.error_str = Some(format!("{}", e));
+                } else {
+                    self.error_str = None;
+                }
+                self.value_str = Some(s);
+                self.value_image = None;
+            }
+            Err(e) => {
+                self.value_str = None;
+                self.value_image = None;
+                self.error_str = Some(e.to_string());
+            }
+        }
+    }
+
+    fn clone_from_image(&mut self, data: &[u8]) {
+        match image::load_from_memory(data) {
+            Ok(m) => {
+                let image_buffer = m.into_rgb8();
+                let image_size = [
+                    image_buffer.width() as usize,
+                    image_buffer.height() as usize,
+                ];
+                let pixels = image_buffer.as_flat_samples();
+                let color_image = ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+                self.value_str = None;
+                self.value_image = Some(color_image);
+                self.error_str = None;
+            }
+            Err(e) => {
+                self.value_str = None;
+                self.value_image = None;
+                self.error_str = Some(e.to_string());
+            }
+        }
+        self.image_texture_handle = None;
+    }
+
     fn clone_from(
         &mut self,
         value: &Value,
@@ -845,13 +948,82 @@ impl ViewValueWindow {
         self.key = key.clone();
         self.kind = kind.clone();
         self.timestamp = timestamp.clone();
-        self.value = value.clone();
+        let mut data: Vec<u8> = Vec::from(value.payload.contiguous());
+        self.encoding = value.encoding.clone();
+        match value.encoding.prefix() {
+            KnownEncoding::Empty => {
+                self.clone_from_bin();
+            }
+            KnownEncoding::AppOctetStream => {
+                self.clone_from_bin();
+            }
+            KnownEncoding::AppCustom => {
+                self.clone_from_bin();
+            }
+            KnownEncoding::TextPlain => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::AppProperties => {
+                self.clone_from_bin();
+            }
+            KnownEncoding::AppJson => {
+                self.clone_from_str_to_json(data.clone());
+            }
+            KnownEncoding::AppSql => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::AppInteger => {
+                self.clone_from_str_to::<i64>(data.clone());
+            }
+            KnownEncoding::AppFloat => {
+                self.clone_from_str_to::<f64>(data.clone());
+            }
+            KnownEncoding::AppXml => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::AppXhtmlXml => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::TextJson => {
+                self.clone_from_str_to_json(data.clone());
+            }
+            KnownEncoding::TextHtml => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::TextXml => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::TextCss => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::TextCsv => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::TextJavascript => {
+                self.clone_from_str(data.clone());
+            }
+            KnownEncoding::ImageJpeg => {
+                self.clone_from_image(data.as_slice());
+            }
+            KnownEncoding::ImagePng => {
+                self.clone_from_image(data.as_slice());
+            }
+            KnownEncoding::ImageGif => {
+                self.value_str = None;
+                self.value_image = None;
+                self.error_str = Some(format!("Display not supported"));
+            }
+        };
 
-        let data_len = value.payload.len();
-        let mut data: Vec<u8> = Vec::with_capacity(data_len);
-        data.resize(data_len, 0);
-        let _ = value.payload.reader().read_exact(data.as_mut_slice());
-        self.hex_viewer = HexViewer::new(data);
+        if data.len() < HEX_VIEWER_SIZE {
+            self.hex_viewer = HexViewer::new(data);
+        } else {
+            data.resize(HEX_VIEWER_SIZE, 0);
+            self.hex_viewer = HexViewer::new(data);
+        }
     }
 
     fn show_base_info(&mut self, ui: &mut Ui) {
@@ -867,7 +1039,7 @@ impl ViewValueWindow {
             ui.end_row();
 
             ui.label("encoding:  ");
-            let text = RichText::new(format!("{}", self.value.encoding)).monospace();
+            let text = RichText::new(format!("{}", self.encoding)).monospace();
             ui.label(text);
             ui.end_row();
 
@@ -911,91 +1083,109 @@ impl ViewValueWindow {
     }
 
     fn show_page_parse(&mut self, ui: &mut Ui) {
-        match self.value.encoding.prefix() {
+        match self.encoding.prefix() {
             KnownEncoding::TextPlain => {
-                show_parse_string(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::AppJson => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::AppInteger => {
-                let text: RichText = i64_create_rich_text(&self.value);
-                ui.label(text);
+                if let Some(s) = &self.value_str {
+                    let text: RichText = RichText::new(s).monospace();
+                    ui.label(text);
+                }
             }
             KnownEncoding::AppFloat => {
-                let text: RichText = f64_create_rich_text(&self.value);
-                ui.label(text);
+                if let Some(s) = &self.value_str {
+                    let text: RichText = RichText::new(s).monospace();
+                    ui.label(text);
+                }
             }
             KnownEncoding::TextJson => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::Empty => {}
             KnownEncoding::AppOctetStream => {}
             KnownEncoding::AppCustom => {}
             KnownEncoding::AppProperties => {}
             KnownEncoding::AppSql => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::AppXml => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::AppXhtmlXml => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
-            KnownEncoding::AppXWwwFormUrlencoded => {}
+            KnownEncoding::AppXWwwFormUrlencoded => {
+                self.show_text_multiline(ui);
+            }
             KnownEncoding::TextHtml => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::TextXml => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::TextCss => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::TextCsv => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
             KnownEncoding::TextJavascript => {
-                show_parse_json(&self.value, ui);
+                self.show_text_multiline(ui);
             }
-            KnownEncoding::ImageJpeg => {}
+            KnownEncoding::ImageJpeg => {
+                self.show_image(ui);
+            }
             KnownEncoding::ImagePng => {}
             KnownEncoding::ImageGif => {}
         }
+
+        if let Some(e) = &self.error_str {
+            let text = RichText::new(e).color(Color32::RED);
+            ui.label(text);
+        }
     }
-}
 
-fn show_parse_string(value: &Value, ui: &mut Ui) {
-    match String::try_from(value) {
-        Ok(mut s) => {
+    fn show_text_multiline(&mut self, ui: &mut Ui) {
+        if let Some(s) = &mut self.value_str {
             ui.add(
-                TextEdit::multiline(&mut s)
+                TextEdit::multiline(s)
                     .desired_width(f32::INFINITY)
                     .code_editor(),
             );
         }
-        Err(e) => {
-            let text = RichText::new(format!("{}", e)).color(Color32::RED);
-            ui.label(text);
-        }
-    };
-}
+    }
 
-fn show_parse_json(value: &Value, ui: &mut Ui) {
-    match serde_json::Value::try_from(value) {
-        Ok(o) => {
-            let mut s = format!("{:#}", o);
-            ui.add(
-                TextEdit::multiline(&mut s)
-                    .desired_width(f32::INFINITY)
-                    .code_editor(),
-            );
+    fn show_image(&mut self, ui: &mut Ui) {
+        if let Some(color_image) = self.value_image.take() {
+            let texture: &TextureHandle = self.image_texture_handle.get_or_insert_with(|| {
+                ui.ctx()
+                    .load_texture("page_sub_show_image", color_image, TextureOptions::NEAREST)
+            });
+            let image_size = texture.size_vec2();
+            let plot_image = PlotImage::new(
+                texture,
+                PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
+                image_size,
+            )
+            .highlight(true);
+            let plot = Plot::new("page_sub_show_image_plot")
+                .legend(Legend::default().position(Corner::RightTop))
+                .show_x(true)
+                .show_y(true)
+                .show_axes([false, false])
+                .allow_boxed_zoom(false)
+                .allow_scroll(false)
+                .show_background(true)
+                .data_aspect(1.0);
+            plot.show(ui, |plot_ui| {
+                plot_ui.image(plot_image);
+            });
         }
-        Err(e) => {
-            let text = RichText::new(format!("{}", e)).color(Color32::RED);
-            ui.label(text);
-        }
-    };
+    }
 }
 
 fn filter(list: &Vec<String>, filter_str: &str) -> Vec<String> {

@@ -1,5 +1,7 @@
 use eframe::egui::{DragValue, RichText, ScrollArea, Ui};
 
+pub const HEX_VIEWER_SIZE: usize = 5 * 1024;
+
 pub struct HexViewer {
     buffer: Vec<u8>,
     select_index: usize,
@@ -85,7 +87,7 @@ impl HexViewer {
     }
 
     fn show_ascii(&mut self, ui: &mut Ui) {
-        let mut style = ui.style_mut();
+        let style = ui.style_mut();
         style.spacing.item_spacing.x = 0.0;
         style.spacing.button_padding.x = 1.0;
         ui.vertical(|ui| {

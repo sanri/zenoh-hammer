@@ -109,11 +109,13 @@ impl HammerApp {
                     }
                     DialogType::OpenFile => {
                         if let Some(file) = dialog.path() {
+                            let file = file.to_path_buf();
                             self.load_from_file(file);
                         }
                     }
                     DialogType::SaveFile => {
                         if let Some(file) = dialog.path() {
+                            let file = file.to_path_buf();
                             self.store_to_file(file);
                         }
                     }

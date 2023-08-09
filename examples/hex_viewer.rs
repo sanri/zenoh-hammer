@@ -2,12 +2,11 @@
 mod hex_viewer;
 
 use eframe::{
-    egui::{CentralPanel, Color32, Context, Layout, RichText},
-    emath::Align,
+    egui::{CentralPanel, Context},
     AppCreator, Frame, HardwareAcceleration, NativeOptions,
 };
 
-use crate::hex_viewer::HexViewer;
+use crate::hex_viewer::{HexViewer, HEX_VIEWER_SIZE};
 
 struct AppHexViewer {
     viewer: HexViewer,
@@ -17,8 +16,8 @@ impl Default for AppHexViewer {
     fn default() -> Self {
         AppHexViewer {
             viewer: HexViewer::new({
-                let mut vec = Vec::with_capacity(2000);
-                for i in 0..2000 {
+                let mut vec = Vec::with_capacity(HEX_VIEWER_SIZE);
+                for i in 0..HEX_VIEWER_SIZE {
                     vec.push(i as u8);
                 }
                 vec

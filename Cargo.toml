@@ -1,6 +1,6 @@
 [package]
 name = "zenoh-hammer"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [[example]]
@@ -14,7 +14,7 @@ lto = true
 [dependencies]
 eframe = { version = "0.22", default-features = false, features = [ "persistence", "wgpu" ] }
 egui_extras = { version = "0.22" }
-egui_file = "0.9"
+egui_file = "0.10"
 egui_dnd = "0.4"
 tracing-subscriber = "0.3"
 zenoh = { version = "0.7.2-rc", features = [ "default", "unstable" ] }
@@ -23,8 +23,8 @@ zenoh = { version = "0.7.2-rc", features = [ "default", "unstable" ] }
 async-std = { version = "=1.12", default-features = false }
 futures = "0.3"
 flume = "0.10"
-strum = "0.24"
-strum_macros = "0.24"
+strum = "0.25"
+strum_macros = "0.25"
 serde = "1.0"
 serde_json = "1.0"
 log = "0.4"
@@ -33,3 +33,4 @@ uhlc = "0.5"
 uuid = "1.2"
 arboard = "3.2"
 include-cargo-toml = "0.1"
+image = { version = "0.24", default-features = false, features = [ "png", "jpeg" ] }
