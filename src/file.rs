@@ -62,6 +62,8 @@ fn app_file_to_string() {
 #[test]
 fn app_file_write() {
     use std::path::PathBuf;
+    use std::str::FromStr;
+
     let app_file = AppStoreData::default();
     match app_file.write(PathBuf::from_str("target/app_file.json").unwrap().as_path()) {
         Ok(_) => {
