@@ -8,8 +8,9 @@ mod page_session;
 mod page_sub;
 mod zenoh;
 
-use crate::{app::HammerApp, language::load_fonts};
 use eframe::{AppCreator, HardwareAcceleration, IconData, NativeOptions};
+
+use crate::{app::HammerApp, language::load_fonts};
 
 fn main() {
     let options = NativeOptions {

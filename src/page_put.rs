@@ -1,13 +1,20 @@
 use eframe::{
     egui,
-    egui::{Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle, Ui},
+    egui::{
+        plot::{Corner, Legend, Plot, PlotImage, PlotPoint},
+        Color32, ColorImage, Context, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle,
+        TextureHandle, TextureOptions, Ui,
+    },
     emath::Align,
 };
 use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
+use egui_file::{DialogType, FileDialog};
+use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
     collections::{BTreeMap, VecDeque},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use zenoh::prelude::{CongestionControl, Encoding, KnownEncoding, OwnedKeyExpr, Priority, Value};
@@ -105,6 +112,9 @@ pub struct PagePutData {
     selected_priority: Priority,
     selected_encoding: KnownEncoding,
     edit_str: String,
+    image_file_dialog: Option<FileDialog>,
+    image_file_path: Option<PathBuf>,
+    image_texture: Option<TextureHandle>,
     pub info: Option<RichText>,
 }
 
@@ -118,6 +128,9 @@ impl Default for PagePutData {
             selected_priority: Priority::RealTime,
             selected_encoding: KnownEncoding::TextPlain,
             edit_str: String::new(),
+            image_file_path: None,
+            image_file_dialog: None,
+            image_texture: None,
             info: None,
         }
     }
@@ -134,6 +147,9 @@ impl PagePutData {
             selected_priority: data.priority.into(),
             selected_encoding: encoding,
             edit_str: s,
+            image_file_path: None,
+            image_file_dialog: None,
+            image_texture: None,
             info: None,
         }
     }
@@ -158,6 +174,9 @@ impl PagePutData {
             selected_priority: ppd.selected_priority,
             selected_encoding: ppd.selected_encoding,
             edit_str: ppd.edit_str.clone(),
+            image_file_path: None,
+            image_file_dialog: None,
+            image_texture: None,
             info: None,
         }
     }
@@ -169,6 +188,8 @@ impl PagePutData {
                     self.send(events);
                 }
             });
+
+            ui.add_space(10.0);
 
             self.show_name_key(ui);
             self.show_options(ui);
@@ -246,6 +267,7 @@ impl PagePutData {
                 .selected_text(format!("{}", Encoding::Exact(self.selected_encoding)))
                 .show_ui(ui, |ui| {
                     let options = [
+                        KnownEncoding::AppOctetStream,
                         KnownEncoding::TextPlain,
                         KnownEncoding::TextJson,
                         KnownEncoding::AppJson,
@@ -259,12 +281,14 @@ impl PagePutData {
                         KnownEncoding::TextCss,
                         KnownEncoding::TextCsv,
                         KnownEncoding::TextJavascript,
+                        KnownEncoding::ImageJpeg,
+                        KnownEncoding::ImagePng,
                     ];
                     for option in options {
                         ui.selectable_value(
                             &mut self.selected_encoding,
                             option,
-                            format!("{}", Encoding::Exact(option)),
+                            format!("{}", Encoding::from(option)),
                         );
                     }
                 });
@@ -278,8 +302,13 @@ impl PagePutData {
                 show_grid(ui);
             });
 
-        ui.label("value: ");
-        let text_edit_multiline = |edit_str: &mut String, ui: &mut Ui| {
+        let text_edit_multiline = |edit_str: &mut String, info: &Option<RichText>, ui: &mut Ui| {
+            ui.label("value: ");
+
+            if let Some(rt) = info {
+                ui.label(rt.clone());
+            };
+
             ui.add(
                 TextEdit::multiline(edit_str)
                     .desired_width(f32::INFINITY)
@@ -287,59 +316,226 @@ impl PagePutData {
                     .code_editor(),
             );
         };
+
+        let image_view = |ui: &mut Ui,
+                          image_file_path: &mut Option<PathBuf>,
+                          image_file_dialog: &mut Option<FileDialog>,
+                          image_texture: &mut Option<TextureHandle>,
+                          info: &mut Option<RichText>,
+                          image_format: ImageFormat| {
+            ui.horizontal(|ui| {
+                ui.label("image path:");
+                if let Some(p) = image_file_path {
+                    let s = p.to_str().unwrap_or("").to_string();
+                    ui.label(s);
+                }
+            });
+            ui.horizontal(|ui| {
+                if ui.button("load").clicked() {
+                    let mut dialog = FileDialog::open_file(image_file_path.clone())
+                        .show_new_folder(false)
+                        .show_rename(false);
+                    dialog.open();
+                    *image_file_dialog = Some(dialog);
+                }
+                if let Some(p) = image_file_path {
+                    if ui.button("reload").clicked() {
+                        let file = p.to_path_buf();
+                        match Self::load_image(file.as_path(), ui.ctx()) {
+                            Ok((texture, format)) => {
+                                if Some(image_format) == format {
+                                    *image_texture = Some(texture);
+                                    *image_file_path = Some(file);
+                                    *info = None;
+                                } else {
+                                    let text =
+                                        RichText::new("file format error").color(Color32::RED);
+                                    *image_texture = None;
+                                    *image_file_path = None;
+                                    *info = Some(text);
+                                }
+                            }
+                            Err(e) => {
+                                let text = RichText::new(e).color(Color32::RED);
+                                *info = Some(text);
+                                *image_texture = None;
+                                *image_file_path = None;
+                            }
+                        }
+                    }
+                }
+            });
+
+            if let Some(rt) = info {
+                ui.label(rt.clone());
+            };
+
+            if let Some(dialog) = image_file_dialog {
+                if dialog.show(ui.ctx()).selected() {
+                    if DialogType::OpenFile == dialog.dialog_type() {
+                        if let Some(file) = dialog.path() {
+                            let file = file.to_path_buf();
+                            match Self::load_image(file.as_path(), ui.ctx()) {
+                                Ok((texture, format)) => {
+                                    if Some(image_format) == format {
+                                        *image_texture = Some(texture);
+                                        *image_file_path = Some(file);
+                                        *info = None;
+                                    } else {
+                                        let text =
+                                            RichText::new("file format error").color(Color32::RED);
+                                        *info = Some(text);
+                                        *image_texture = None;
+                                        *image_file_path = None;
+                                    }
+                                }
+                                Err(e) => {
+                                    let text = RichText::new(e).color(Color32::RED);
+                                    *info = Some(text);
+                                    *image_texture = None;
+                                    *image_file_path = None;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(image_texture) = image_texture {
+                Self::show_image(ui, image_texture);
+            }
+        };
+
         match self.selected_encoding {
             KnownEncoding::TextPlain => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::AppJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::AppInteger => {
+                if let Some(rt) = &self.info {
+                    ui.label(rt.clone());
+                };
                 ui.add(TextEdit::singleline(&mut self.edit_str));
             }
             KnownEncoding::AppFloat => {
+                if let Some(rt) = &self.info {
+                    ui.label(rt.clone());
+                };
                 ui.add(TextEdit::singleline(&mut self.edit_str));
             }
             KnownEncoding::TextJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::Empty => {}
-            KnownEncoding::AppOctetStream => {}
+            KnownEncoding::AppOctetStream => {
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
+            }
             KnownEncoding::AppCustom => {}
             KnownEncoding::AppProperties => {}
             KnownEncoding::AppSql => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::AppXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::AppXhtmlXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::AppXWwwFormUrlencoded => {}
             KnownEncoding::TextHtml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::TextXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::TextCss => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::TextCsv => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
             KnownEncoding::TextJavascript => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.edit_str, &self.info, ui);
             }
-            KnownEncoding::ImageJpeg => {}
-            KnownEncoding::ImagePng => {}
+            KnownEncoding::ImageJpeg => {
+                image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.info,
+                    ImageFormat::Jpeg,
+                );
+            }
+            KnownEncoding::ImagePng => {
+                image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.info,
+                    ImageFormat::Png,
+                );
+            }
             KnownEncoding::ImageGif => {}
         }
+    }
 
-        if let Some(rt) = &self.info {
-            ui.label(rt.clone());
+    fn load_image(
+        path: &Path,
+        ctx: &Context,
+    ) -> Result<(TextureHandle, Option<ImageFormat>), String> {
+        let data = match image::io::Reader::open(path) {
+            Ok(o) => o,
+            Err(e) => {
+                return Err(e.to_string());
+            }
         };
+        let format = data.format().clone();
+        let dynamic_image = match data.decode() {
+            Ok(o) => o,
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        };
+        let rgba_image = dynamic_image.to_rgba8();
+        let image_size = [rgba_image.width() as usize, rgba_image.height() as usize];
+        let pixels = rgba_image.as_flat_samples();
+        let color_image = ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+
+        let texture_handle = ctx.load_texture(
+            "page_pub_image_texture",
+            color_image,
+            TextureOptions::NEAREST,
+        );
+
+        Ok((texture_handle, format))
+    }
+
+    fn show_image(ui: &mut Ui, texture: &TextureHandle) {
+        let image_size = texture.size_vec2();
+
+        let image = PlotImage::new(
+            texture,
+            PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
+            image_size,
+        )
+        .highlight(false);
+
+        let plot = Plot::new("page_pub_plot_image")
+            .legend(Legend::default().position(Corner::RightTop))
+            .show_x(true)
+            .show_y(true)
+            .show_axes([false, false])
+            .allow_boxed_zoom(false)
+            .allow_scroll(false)
+            .show_background(false)
+            .data_aspect(1.0);
+        plot.show(ui, |plot_ui| {
+            plot_ui.image(image);
+        });
     }
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
@@ -395,7 +591,7 @@ impl PagePutData {
                 return;
             }
             KnownEncoding::AppOctetStream => {
-                return;
+                Value::from(self.edit_str.as_bytes()).encoding(KnownEncoding::AppOctetStream.into())
             }
             KnownEncoding::AppCustom => {
                 return;
@@ -407,15 +603,63 @@ impl PagePutData {
                 return;
             }
             KnownEncoding::ImageJpeg => {
-                return;
+                if let Some(image_file) = &self.image_file_path {
+                    match std::fs::read(image_file.as_path()) {
+                        Ok(d) => Value::from(d).encoding(KnownEncoding::ImageJpeg.into()),
+                        Err(e) => {
+                            let text = RichText::new(e.to_string()).color(Color32::RED);
+                            self.info = Some(text);
+                            return;
+                        }
+                    }
+                } else {
+                    return;
+                }
             }
             KnownEncoding::ImagePng => {
-                return;
+                if let Some(image_file) = &self.image_file_path {
+                    match std::fs::read(image_file.as_path()) {
+                        Ok(d) => Value::from(d).encoding(KnownEncoding::ImagePng.into()),
+                        Err(e) => {
+                            let text = RichText::new(e.to_string()).color(Color32::RED);
+                            self.info = Some(text);
+                            return;
+                        }
+                    }
+                } else {
+                    return;
+                }
             }
             KnownEncoding::ImageGif => {
                 return;
             }
-            str_encoding => Value::from(self.edit_str.as_str()).encoding(str_encoding.into()),
+            KnownEncoding::TextPlain => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextPlain.into())
+            }
+            KnownEncoding::AppSql => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppSql.into())
+            }
+            KnownEncoding::AppXml => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppXml.into())
+            }
+            KnownEncoding::AppXhtmlXml => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppXhtmlXml.into())
+            }
+            KnownEncoding::TextHtml => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextHtml.into())
+            }
+            KnownEncoding::TextXml => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextXml.into())
+            }
+            KnownEncoding::TextCss => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextCss.into())
+            }
+            KnownEncoding::TextCsv => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextCsv.into())
+            }
+            KnownEncoding::TextJavascript => {
+                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJavascript.into())
+            }
         };
         let put_data = PutData {
             id: self.id,

@@ -1,11 +1,10 @@
 use arboard::Clipboard;
-use eframe::egui::plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
-use eframe::egui::{ColorImage, TextureOptions};
 use eframe::{
     egui,
     egui::{
-        Align, CollapsingHeader, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea,
-        TextEdit, TextStyle, TextureHandle, Ui,
+        plot::{Corner, Legend, Plot, PlotImage, PlotPoint},
+        Align, CollapsingHeader, Color32, ColorImage, Context, DragValue, Id, Layout, RichText,
+        ScrollArea, TextEdit, TextStyle, TextureHandle, TextureOptions, Ui,
     },
 };
 use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
@@ -221,58 +220,64 @@ impl PageSub {
             Some(o) => o,
         };
 
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("name:     ").monospace());
-            let te = TextEdit::singleline(&mut data_group.name)
-                .desired_width(600.0)
-                .font(TextStyle::Monospace)
-                .interactive(!data_group.subscribed);
-            ui.add(te);
+        egui::Grid::new("page_sub_name_key")
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label(RichText::new("name:").monospace());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .selectable_label(data_group.subscribed, "declare")
+                        .clicked()
+                    {
+                        if !data_group.subscribed {
+                            let key_expr_str =
+                                data_group.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
 
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                if ui
-                    .selectable_label(data_group.subscribed, "declare")
-                    .clicked()
-                {
-                    if !data_group.subscribed {
-                        let key_expr_str =
-                            data_group.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
-
-                        if key_expr_str.is_empty() {
-                            let rt = format!("key expr is empty");
-                            data_group.err_str = Some(rt);
-                            return;
-                        }
-
-                        let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_expr_str.as_str())
-                        {
-                            Ok(o) => o,
-                            Err(e) => {
-                                data_group.err_str = Some(e.to_string());
+                            if key_expr_str.is_empty() {
+                                let rt = format!("key expr is empty");
+                                data_group.err_str = Some(rt);
                                 return;
                             }
-                        };
 
-                        self.events
-                            .push_back(Event::AddSub(Box::new((self.selected_sub_id, key))));
-                    } else {
-                        self.events.push_back(Event::DelSub(self.selected_sub_id));
+                            let key: OwnedKeyExpr =
+                                match OwnedKeyExpr::from_str(key_expr_str.as_str()) {
+                                    Ok(o) => o,
+                                    Err(e) => {
+                                        data_group.err_str = Some(e.to_string());
+                                        return;
+                                    }
+                                };
+
+                            self.events
+                                .push_back(Event::AddSub(Box::new((self.selected_sub_id, key))));
+                        } else {
+                            self.events.push_back(Event::DelSub(self.selected_sub_id));
+                        }
+                        data_group.err_str = None;
+                        data_group.subscribed = !data_group.subscribed;
                     }
-                    data_group.err_str = None;
-                    data_group.subscribed = !data_group.subscribed;
-                }
-            });
-        });
 
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("key expr: ").monospace());
-            let te = TextEdit::multiline(&mut data_group.key_expr)
-                .desired_width(600.0)
-                .desired_rows(1)
-                .font(TextStyle::Monospace)
-                .interactive(!data_group.subscribed);
-            ui.add(te);
-        });
+                    let te = TextEdit::singleline(&mut data_group.name)
+                        .desired_width(3000.0)
+                        .font(TextStyle::Monospace)
+                        .interactive(!data_group.subscribed);
+                    ui.add(te);
+                });
+
+                ui.end_row();
+
+                ui.label(RichText::new("key expr:").monospace());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let te = TextEdit::multiline(&mut data_group.key_expr)
+                        .desired_rows(1)
+                        .desired_width(3000.0)
+                        .font(TextStyle::Monospace)
+                        .interactive(!data_group.subscribed);
+                    ui.add(te);
+                });
+
+                ui.end_row();
+            });
 
         if let Some(e) = &data_group.err_str {
             ui.label(RichText::new(e).color(Color32::RED));
@@ -918,7 +923,7 @@ impl ViewValueWindow {
     fn clone_from_image(&mut self, data: &[u8]) {
         match image::load_from_memory(data) {
             Ok(m) => {
-                let image_buffer = m.into_rgb8();
+                let image_buffer = m.into_rgba8();
                 let image_size = [
                     image_buffer.width() as usize,
                     image_buffer.height() as usize,
@@ -1139,7 +1144,9 @@ impl ViewValueWindow {
             KnownEncoding::ImageJpeg => {
                 self.show_image(ui);
             }
-            KnownEncoding::ImagePng => {}
+            KnownEncoding::ImagePng => {
+                self.show_image(ui);
+            }
             KnownEncoding::ImageGif => {}
         }
 
@@ -1161,30 +1168,38 @@ impl ViewValueWindow {
 
     fn show_image(&mut self, ui: &mut Ui) {
         if let Some(color_image) = self.value_image.take() {
-            let texture: &TextureHandle = self.image_texture_handle.get_or_insert_with(|| {
+            let texture: TextureHandle =
                 ui.ctx()
-                    .load_texture("page_sub_show_image", color_image, TextureOptions::NEAREST)
-            });
-            let image_size = texture.size_vec2();
-            let plot_image = PlotImage::new(
-                texture,
-                PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
-                image_size,
-            )
-            .highlight(true);
-            let plot = Plot::new("page_sub_show_image_plot")
-                .legend(Legend::default().position(Corner::RightTop))
-                .show_x(true)
-                .show_y(true)
-                .show_axes([false, false])
-                .allow_boxed_zoom(false)
-                .allow_scroll(false)
-                .show_background(true)
-                .data_aspect(1.0);
-            plot.show(ui, |plot_ui| {
-                plot_ui.image(plot_image);
-            });
+                    .load_texture("page_sub_show_image", color_image, TextureOptions::NEAREST);
+            self.image_texture_handle = Some(texture);
         }
+
+        let texture: &TextureHandle = match &self.image_texture_handle {
+            None => {
+                return;
+            }
+            Some(t) => t,
+        };
+
+        let image_size = texture.size_vec2();
+        let plot_image = PlotImage::new(
+            texture,
+            PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
+            image_size,
+        )
+        .highlight(false);
+        let plot = Plot::new("page_sub_show_image_plot")
+            .legend(Legend::default().position(Corner::RightTop))
+            .show_x(true)
+            .show_y(true)
+            .show_axes([false, false])
+            .allow_boxed_zoom(false)
+            .allow_scroll(false)
+            .show_background(false)
+            .data_aspect(1.0);
+        plot.show(ui, |plot_ui| {
+            plot_ui.image(plot_image);
+        });
     }
 }
 

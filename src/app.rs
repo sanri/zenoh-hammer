@@ -12,7 +12,7 @@ use std::{path::PathBuf, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 use zenoh::{
-    prelude::{Encoding, KnownEncoding, SplitBuffer},
+    prelude::{KnownEncoding, SplitBuffer},
     value::Value,
 };
 
@@ -135,7 +135,9 @@ impl HammerApp {
                     return;
                 }
 
-                let mut dialog = FileDialog::open_file(self.opened_file.clone());
+                let mut dialog = FileDialog::open_file(self.opened_file.clone())
+                    .show_new_folder(false)
+                    .show_rename(false);
                 dialog.open();
                 self.file_dialog = Some(dialog);
                 ui.close_menu();
@@ -145,7 +147,9 @@ impl HammerApp {
                 if let Some(p) = self.opened_file.clone() {
                     self.store_to_file(p);
                 } else {
-                    let mut dialog = FileDialog::save_file(self.opened_file.clone());
+                    let mut dialog = FileDialog::save_file(self.opened_file.clone())
+                        .show_new_folder(true)
+                        .show_rename(true);
                     dialog.open();
                     self.file_dialog = Some(dialog);
                 }
@@ -153,7 +157,9 @@ impl HammerApp {
             }
 
             if ui.add(egui::Button::new("save as ..")).clicked() {
-                let mut dialog = FileDialog::save_file(self.opened_file.clone());
+                let mut dialog = FileDialog::save_file(self.opened_file.clone())
+                    .show_new_folder(true)
+                    .show_rename(true);
                 dialog.open();
                 self.file_dialog = Some(dialog);
 
@@ -379,31 +385,28 @@ impl HammerApp {
 }
 
 pub fn value_create_rich_text(d: &Value) -> Option<RichText> {
-    match d.encoding {
-        Encoding::Exact(ke) => match ke {
-            KnownEncoding::AppOctetStream => Some(RichText::new("...")),
-            KnownEncoding::TextPlain => Some(text_plant_create_rich_text(d)),
-            KnownEncoding::AppJson => Some(json_create_rich_text(d)),
-            KnownEncoding::AppInteger => Some(i64_create_rich_text(d)),
-            KnownEncoding::AppFloat => Some(f64_create_rich_text(d)),
-            KnownEncoding::TextJson => Some(json_create_rich_text(d)),
-            KnownEncoding::Empty => None,
-            KnownEncoding::AppCustom => Some(RichText::new("...")),
-            KnownEncoding::AppProperties => None,
-            KnownEncoding::AppSql => Some(RichText::new("...")),
-            KnownEncoding::AppXml => Some(RichText::new("...")),
-            KnownEncoding::AppXhtmlXml => Some(RichText::new("...")),
-            KnownEncoding::AppXWwwFormUrlencoded => None,
-            KnownEncoding::TextHtml => Some(RichText::new("...")),
-            KnownEncoding::TextXml => Some(RichText::new("...")),
-            KnownEncoding::TextCss => Some(RichText::new("...")),
-            KnownEncoding::TextCsv => Some(RichText::new("...")),
-            KnownEncoding::TextJavascript => Some(RichText::new("...")),
-            KnownEncoding::ImageJpeg => None,
-            KnownEncoding::ImagePng => None,
-            KnownEncoding::ImageGif => None,
-        },
-        Encoding::WithSuffix(_, _) => None,
+    match d.encoding.prefix() {
+        KnownEncoding::AppOctetStream => Some(RichText::new("...")),
+        KnownEncoding::TextPlain => Some(text_plant_create_rich_text(d)),
+        KnownEncoding::AppJson => Some(json_create_rich_text(d)),
+        KnownEncoding::AppInteger => Some(i64_create_rich_text(d)),
+        KnownEncoding::AppFloat => Some(f64_create_rich_text(d)),
+        KnownEncoding::TextJson => Some(json_create_rich_text(d)),
+        KnownEncoding::Empty => None,
+        KnownEncoding::AppCustom => Some(RichText::new("...")),
+        KnownEncoding::AppProperties => None,
+        KnownEncoding::AppSql => Some(RichText::new("...")),
+        KnownEncoding::AppXml => Some(RichText::new("...")),
+        KnownEncoding::AppXhtmlXml => Some(RichText::new("...")),
+        KnownEncoding::AppXWwwFormUrlencoded => None,
+        KnownEncoding::TextHtml => Some(RichText::new("...")),
+        KnownEncoding::TextXml => Some(RichText::new("...")),
+        KnownEncoding::TextCss => Some(RichText::new("...")),
+        KnownEncoding::TextCsv => Some(RichText::new("...")),
+        KnownEncoding::TextJavascript => Some(RichText::new("...")),
+        KnownEncoding::ImageJpeg => Some(RichText::new("◪")),
+        KnownEncoding::ImagePng => Some(RichText::new("◪")),
+        KnownEncoding::ImageGif => None,
     }
 }
 
@@ -570,6 +573,10 @@ fn show_about_window(ctx: &Context, is_open: &mut bool) {
             ui.hyperlink_to(
                 format!("{} Zenoh-hammer on GitHub", GITHUB),
                 "https://github.com/sanri/zenoh-hammer",
+            );
+            ui.hyperlink_to(
+                format!("{} Zenoh on GitHub", GITHUB),
+                "https://github.com/eclipse-zenoh/zenoh",
             );
         });
     });
