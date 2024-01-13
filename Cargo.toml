@@ -12,7 +12,7 @@ inherits = "release"
 lto = true
 
 [dependencies]
-eframe = { version = "0.25", default-features = false, features = [ "persistence", "wgpu" ] }
+eframe = { version = "0.25", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
 egui_plot = "0.25"
 egui_extras = { version = "0.25" }
 egui_file = "0.14"
