@@ -12,7 +12,7 @@ use std::{path::PathBuf, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 use zenoh::{
-    prelude::{KnownEncoding, SplitBuffer},
+    prelude::{Buffer, KnownEncoding},
     value::Value,
 };
 
@@ -79,10 +79,10 @@ impl eframe::App for HammerApp {
 }
 
 impl HammerApp {
-    fn show_ui(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                self.show_bar_contents(ui, frame.info().native_pixels_per_point);
+                self.show_bar_contents(ui);
             });
         });
 
@@ -126,7 +126,7 @@ impl HammerApp {
         show_about_window(ctx, &mut self.show_about);
     }
 
-    fn show_bar_contents(&mut self, ui: &mut egui::Ui, native_pixels_per_point: Option<f32>) {
+    fn show_bar_contents(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("file", |ui| {
             ui.set_min_width(80.0);
 
@@ -176,9 +176,9 @@ impl HammerApp {
                 ui.close_menu();
             }
 
-            ui.menu_button("zoom", |ui| {
-                egui::gui_zoom::zoom_menu_buttons(ui, native_pixels_per_point);
-            });
+            // ui.menu_button("zoom", |ui| {
+            //     egui::gui_zoom::zoom_menu_buttons(ui, native_pixels_per_point);
+            // });
 
             // ui.separator();
 

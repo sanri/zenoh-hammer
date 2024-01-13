@@ -8,16 +8,21 @@ mod page_session;
 mod page_sub;
 mod zenoh;
 
-use eframe::{AppCreator, HardwareAcceleration, IconData, NativeOptions};
+use eframe::egui::ViewportBuilder;
+use eframe::{icon_data::from_png_bytes, AppCreator, HardwareAcceleration, NativeOptions};
+use std::sync::Arc;
 
 use crate::{app::HammerApp, language::load_fonts};
 
 fn main() {
     let options = NativeOptions {
         hardware_acceleration: HardwareAcceleration::Required,
-        icon_data: Some(
-            IconData::try_from_png_bytes(&include_bytes!("../media/hammer.png")[..]).unwrap(),
-        ),
+        viewport: ViewportBuilder {
+            icon: Some(Arc::new(
+                from_png_bytes(&include_bytes!("../media/hammer.png")[..]).unwrap(),
+            )),
+            ..ViewportBuilder::default()
+        },
         ..NativeOptions::default()
     };
     let fonts = load_fonts();

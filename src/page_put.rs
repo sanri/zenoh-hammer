@@ -1,14 +1,14 @@
 use eframe::{
     egui,
     egui::{
-        plot::{Corner, Legend, Plot, PlotImage, PlotPoint},
-        Color32, ColorImage, Context, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle,
+        Color32, ColorImage, Context, Layout, RichText, ScrollArea, TextEdit, TextStyle,
         TextureHandle, TextureOptions, Ui,
     },
     emath::Align,
 };
-use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
+use egui_dnd::dnd;
 use egui_file::{DialogType, FileDialog};
+use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
 use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -524,11 +524,12 @@ impl PagePutData {
         )
         .highlight(false);
 
-        let plot = Plot::new("page_pub_plot_image")
+        let plot = Plot::new("page_put_plot_image")
             .legend(Legend::default().position(Corner::RightTop))
             .show_x(true)
             .show_y(true)
             .show_axes([false, false])
+            .show_grid(false)
             .allow_boxed_zoom(false)
             .allow_scroll(false)
             .show_background(false)
@@ -678,7 +679,6 @@ pub struct PagePut {
     pub data_map: BTreeMap<u64, PagePutData>,
     selected_data_id: u64,
     put_id_count: u64,
-    dnd: DragDropUi,
     dnd_items: Vec<DndItem>,
 }
 
@@ -689,7 +689,6 @@ impl Default for PagePut {
             data_map: BTreeMap::new(),
             selected_data_id: 1,
             put_id_count: 0,
-            dnd: DragDropUi::default(),
             dnd_items: Vec::new(),
         };
         p.add_put_data(PagePutData::default());
@@ -766,30 +765,21 @@ impl PagePut {
                 .max_width(200.0)
                 .auto_shrink([true, false])
                 .show(ui, |ui| {
-                    let response = self.dnd.ui::<DndItem>(
-                        ui,
-                        self.dnd_items.iter_mut(),
-                        |item, ui, handle| {
-                            ui.horizontal(|ui| {
-                                if let Some(d) = self.data_map.get(&item.key_id) {
-                                    handle.ui(ui, item, |ui| {
-                                        ui.label("·");
-                                    });
-
+                    dnd(ui, "page_put_list").show_vec(
+                        self.dnd_items.as_mut_slice(),
+                        |ui, item, handle, _state| {
+                            if let Some(d) = self.data_map.get(&item.key_id) {
+                                handle.ui(ui, |ui| {
                                     let text = RichText::new(d.name.as_str());
                                     ui.selectable_value(
                                         &mut self.selected_data_id,
                                         item.key_id,
                                         text,
                                     );
-                                }
-                            });
+                                });
+                            }
                         },
-                    );
-
-                    if let Some(response) = response.completed {
-                        shift_vec(response.from, response.to, &mut self.dnd_items);
-                    }
+                    )
                 });
         });
     }
@@ -838,6 +828,7 @@ impl PagePut {
     }
 }
 
+#[derive(Hash)]
 struct DndItem {
     key_id: u64,
 }
@@ -845,11 +836,5 @@ struct DndItem {
 impl DndItem {
     fn new(k: u64) -> Self {
         DndItem { key_id: k }
-    }
-}
-
-impl DragDropItem for DndItem {
-    fn id(&self) -> Id {
-        Id::new(format!("page_put dnd_item {}", self.key_id))
     }
 }

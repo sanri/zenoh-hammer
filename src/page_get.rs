@@ -6,7 +6,7 @@ use eframe::{
         Ui,
     },
 };
-use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
+use egui_dnd::dnd;
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,12 +14,11 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use zenoh::prelude::ZenohId;
 use zenoh::{
     buffers::reader::{HasReader, Reader},
     prelude::{
-        Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget, Sample,
-        SplitBuffer, Value,
+        Buffer, Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget,
+        Sample, Value, ZenohId,
     },
     query::{ConsolidationMode, Mode, Reply},
 };
@@ -822,7 +821,7 @@ pub struct PageGet {
     get_id_count: u64,
     show_view_reply_window: bool,
     view_reply_window: ViewReplyWindow,
-    dnd: DragDropUi,
+    // dnd: DragDropUi,
     dnd_items: Vec<DndItem>,
 }
 
@@ -835,7 +834,7 @@ impl Default for PageGet {
             get_id_count: 0,
             show_view_reply_window: false,
             view_reply_window: ViewReplyWindow::default(),
-            dnd: DragDropUi::default(),
+            // dnd: DragDropUi::default(),
             dnd_items: Vec::new(),
         };
         p.add_get_data(PageGetData::default());
@@ -920,30 +919,21 @@ impl PageGet {
                 .max_width(200.0)
                 .auto_shrink([true, false])
                 .show(ui, |ui| {
-                    let response = self.dnd.ui::<DndItem>(
-                        ui,
-                        self.dnd_items.iter_mut(),
-                        |item, ui, handle| {
-                            ui.horizontal(|ui| {
-                                if let Some(d) = self.data_map.get(&item.key_id) {
-                                    handle.ui(ui, item, |ui| {
-                                        ui.label("·");
-                                    });
-
+                    dnd(ui, "page_get_list").show_vec(
+                        self.dnd_items.as_mut_slice(),
+                        |ui, item, handle, _state| {
+                            if let Some(d) = self.data_map.get(&item.key_id) {
+                                handle.ui(ui, |ui| {
                                     let text = RichText::new(d.name.as_str());
                                     ui.selectable_value(
                                         &mut self.selected_data_id,
                                         item.key_id,
                                         text,
                                     );
-                                }
-                            });
+                                });
+                            }
                         },
-                    );
-
-                    if let Some(response) = response.completed {
-                        shift_vec(response.from, response.to, &mut self.dnd_items);
-                    }
+                    )
                 });
         });
     }
@@ -988,6 +978,7 @@ impl PageGet {
     }
 }
 
+#[derive(Hash)]
 struct DndItem {
     key_id: u64,
 }
@@ -995,11 +986,5 @@ struct DndItem {
 impl DndItem {
     fn new(k: u64) -> Self {
         DndItem { key_id: k }
-    }
-}
-
-impl DragDropItem for DndItem {
-    fn id(&self) -> Id {
-        Id::new(format!("page_get dnd_item {}", self.key_id))
     }
 }

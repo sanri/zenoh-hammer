@@ -2,13 +2,13 @@ use arboard::Clipboard;
 use eframe::{
     egui,
     egui::{
-        plot::{Corner, Legend, Plot, PlotImage, PlotPoint},
         Align, CollapsingHeader, Color32, ColorImage, Context, DragValue, Id, Layout, RichText,
         ScrollArea, TextEdit, TextStyle, TextureHandle, TextureOptions, Ui,
     },
 };
-use egui_dnd::{utils::shift_vec, DragDropItem, DragDropUi};
+use egui_dnd::dnd;
 use egui_extras::{Column, TableBody, TableBuilder};
+use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
 use image;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -51,7 +51,6 @@ pub struct PageSub {
     show_view_value_window: bool,
     view_value_window: ViewValueWindow,
     sub_data_group: BTreeMap<u64, PageSubData>, // <sub id, group>
-    dnd: DragDropUi,
     dnd_items: Vec<DndItem>,
 }
 
@@ -64,7 +63,6 @@ impl Default for PageSub {
             show_view_value_window: false,
             view_value_window: ViewValueWindow::default(),
             sub_data_group: BTreeMap::new(),
-            dnd: DragDropUi::default(),
             dnd_items: Vec::new(),
         };
         p.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
@@ -183,32 +181,21 @@ impl PageSub {
             .max_width(200.0)
             .auto_shrink([true, false])
             .show(ui, |ui| {
-                let response =
-                    self.dnd
-                        .ui::<DndItem>(ui, self.dnd_items.iter_mut(), |item, ui, handle| {
-                            ui.horizontal(|ui| {
-                                if let Some(d) = self.sub_data_group.get(&item.key_id) {
-                                    handle.ui(ui, item, |ui| {
-                                        ui.label("·");
-                                    });
-
-                                    let text = if d.subscribed {
-                                        RichText::new(d.name.as_str()).underline().strong()
-                                    } else {
-                                        RichText::new(d.name.as_str())
-                                    };
-                                    ui.selectable_value(
-                                        &mut self.selected_sub_id,
-                                        item.key_id,
-                                        text,
-                                    );
-                                }
+                dnd(ui, "page_sub_list").show_vec(
+                    self.dnd_items.as_mut_slice(),
+                    |ui, item, handle, _state| {
+                        if let Some(d) = self.sub_data_group.get(&item.key_id) {
+                            let text = if d.subscribed {
+                                RichText::new(d.name.as_str()).underline().strong()
+                            } else {
+                                RichText::new(d.name.as_str())
+                            };
+                            handle.ui(ui, |ui| {
+                                ui.selectable_value(&mut self.selected_sub_id, item.key_id, text);
                             });
-                        });
-
-                if let Some(response) = response.completed {
-                    shift_vec(response.from, response.to, &mut self.dnd_items);
-                }
+                        }
+                    },
+                )
             });
     }
 
@@ -473,6 +460,7 @@ impl PageSub {
     }
 }
 
+#[derive(Hash)]
 struct DndItem {
     key_id: u64,
 }
@@ -480,12 +468,6 @@ struct DndItem {
 impl DndItem {
     fn new(k: u64) -> Self {
         DndItem { key_id: k }
-    }
-}
-
-impl DragDropItem for DndItem {
-    fn id(&self) -> Id {
-        Id::new(format!("page_sub dnd_item {}", self.key_id))
     }
 }
 
@@ -1193,6 +1175,7 @@ impl ViewValueWindow {
             .show_x(true)
             .show_y(true)
             .show_axes([false, false])
+            .show_grid(false)
             .allow_boxed_zoom(false)
             .allow_scroll(false)
             .show_background(false)
