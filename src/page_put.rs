@@ -17,9 +17,10 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use zenoh::prelude::{CongestionControl, Encoding, KnownEncoding, OwnedKeyExpr, Priority, Value};
+use zenoh::qos::{CongestionControl, Priority};
 
 use crate::{app::ZenohValue, zenoh::PutData};
+use crate::zenoh::KnownEncoding;
 
 pub enum Event {
     Put(Box<PutData>),
@@ -667,7 +668,7 @@ impl PagePutData {
             key,
             congestion_control: self.selected_congestion_control,
             priority: self.selected_priority,
-            value,
+            payload: value,
         };
         events.push_back(Event::Put(Box::new(put_data)));
         self.info = None;

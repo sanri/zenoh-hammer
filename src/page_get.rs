@@ -1,3 +1,8 @@
+use crate::{
+    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
+    hex_viewer::HexViewer,
+    zenoh::QueryData,
+};
 use arboard::Clipboard;
 use eframe::{
     egui,
@@ -14,20 +19,10 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use zenoh::{
-    buffers::reader::{HasReader, Reader},
-    prelude::{
-        Buffer, Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget,
-        Sample, Value, ZenohId,
-    },
-    query::{ConsolidationMode, Mode, Reply},
-};
-
-use crate::{
-    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
-    hex_viewer::HexViewer,
-    zenoh::QueryData,
-};
+use zenoh::query::{ConsolidationMode, Reply};
+use zenoh::query::{QueryConsolidation, QueryTarget};
+use zenoh::sample::Locality;
+use crate::zenoh::KnownEncoding;
 
 // query
 pub enum Event {
@@ -74,12 +69,10 @@ pub enum ZConsolidation {
 impl From<QueryConsolidation> for ZConsolidation {
     fn from(value: QueryConsolidation) -> Self {
         match value.mode() {
-            Mode::Auto => ZConsolidation::Auto,
-            Mode::Manual(m) => match m {
-                ConsolidationMode::None => ZConsolidation::None,
-                ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
-                ConsolidationMode::Latest => ZConsolidation::Latest,
-            },
+            ConsolidationMode::None => ZConsolidation::None,
+            ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
+            ConsolidationMode::Latest => ZConsolidation::Latest,
+            ConsolidationMode::Auto => ZConsolidation::Auto,
         }
     }
 }
@@ -604,7 +597,7 @@ impl PageGetData {
             consolidation: self.selected_consolidation,
             locality: self.selected_locality,
             timeout: Duration::from_millis(self.timeout),
-            value: v,
+            payload: v,
         };
         events.push_back(Event::Get(Box::new(d)));
     }

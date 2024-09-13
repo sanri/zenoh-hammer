@@ -1,3 +1,7 @@
+use crate::{
+    app::value_create_rich_text,
+    hex_viewer::{HexViewer, HEX_VIEWER_SIZE},
+};
 use arboard::Clipboard;
 use eframe::{
     egui,
@@ -10,20 +14,20 @@ use egui_dnd::dnd;
 use egui_extras::{Column, TableBody, TableBuilder};
 use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
 use image;
+use log::info;
 use serde::{Deserialize, Serialize};
+use std::ops::Add;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, VecDeque},
     str::FromStr,
 };
+use zenoh::bytes::{Encoding, ZBytes};
+use zenoh::sample::SampleKind;
 use zenoh::{
-    prelude::{Encoding, KnownEncoding, OwnedKeyExpr, SampleKind, SplitBuffer, Value},
+    key_expr::OwnedKeyExpr,
     sample::Sample,
-    time::{new_reception_timestamp, Timestamp, TimestampId, NTP64},
-};
-
-use crate::{
-    app::value_create_rich_text,
-    hex_viewer::{HexViewer, HEX_VIEWER_SIZE},
+    time::{Timestamp, TimestampId, NTP64},
 };
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
@@ -342,7 +346,7 @@ impl PageSub {
                 ui.label("   ");
                 let dv = DragValue::new(&mut data_group.buffer_size_tmp)
                     .speed(10.0)
-                    .clamp_range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
+                    .range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
                 ui.add(dv);
                 if ui.button("update buffer").clicked() {
                     if let Some(data) = data_group.map.get_mut(&selected_key) {
@@ -424,15 +428,15 @@ impl PageSub {
         });
     }
 
-    pub fn processing_sub_cb(&mut self, id: u64, sample: Sample) {
-        let key = sample.key_expr.as_str();
+    pub fn processing_sub_cb(&mut self, id: u64, sample: Sample, receipt_time: SystemTime) {
+        let key = sample.key_expr().as_str();
         if let Some(data_group) = self.sub_data_group.get_mut(&id) {
             if let Some(sv) = data_group.map.get_mut(key) {
-                sv.add_data((sample.value, sample.kind, sample.timestamp));
+                sv.add_data(sample, receipt_time);
             } else {
-                println!("new key: {}", key);
+                info!("new key: {}", key);
                 let mut sv = DataValues::default();
-                sv.add_data((sample.value, sample.kind, sample.timestamp));
+                sv.add_data(sample, receipt_time);
                 let _ = data_group.map.insert(key.to_string(), sv);
             }
         }
@@ -494,9 +498,9 @@ impl Frequency {
 }
 
 struct DataValues {
-    deque: VecDeque<(Value, SampleKind, Option<Timestamp>)>,
+    deque: VecDeque<(Sample, SystemTime)>,
     buffer_size: usize,
-    lately_local_timestamp: Timestamp,
+    lately_local_timestamp: SystemTime,
 }
 
 impl Default for DataValues {
@@ -504,27 +508,17 @@ impl Default for DataValues {
         DataValues {
             deque: VecDeque::with_capacity(VALUE_BUFFER_SIZE_DEFAULT),
             buffer_size: VALUE_BUFFER_SIZE_DEFAULT,
-            lately_local_timestamp: new_reception_timestamp(),
+            lately_local_timestamp: SystemTime::now(),
         }
     }
 }
 
 impl DataValues {
-    fn add_data(&mut self, d: (Value, SampleKind, Option<Timestamp>)) {
-        let local_timestamp = if let Some(t) = d.2 {
-            if *t.get_id() == TimestampId::try_from([1]).unwrap() {
-                t
-            } else {
-                new_reception_timestamp()
-            }
-        } else {
-            new_reception_timestamp()
-        };
-        self.lately_local_timestamp = local_timestamp;
+    fn add_data(&mut self, sample: Sample, system_time: SystemTime) {
         if self.deque.len() == self.buffer_size {
             let _ = self.deque.pop_front();
         }
-        let _ = self.deque.push_back(d);
+        let _ = self.deque.push_back((sample, system_time));
     }
 
     fn clear(&mut self) {
@@ -547,9 +541,10 @@ impl DataValues {
             return None;
         }
 
-        let timestamp_now = new_reception_timestamp();
-        let dt = timestamp_now
-            .get_diff_duration(&self.lately_local_timestamp)
+        let now_time = SystemTime::now();
+        let dt = now_time
+            .duration_since(self.lately_local_timestamp)
+            .unwrap_or(Duration::default())
             .as_secs() as u32;
         if dt >= 1 {
             return Some(Frequency::S(dt));
@@ -560,16 +555,19 @@ impl DataValues {
         }
 
         // 检索最多100条或最近10s内的记录
-        let mut ntp_max = NTP64(0u64);
-        let mut ntp_min = NTP64(u64::MAX);
+        let mut system_time_min = UNIX_EPOCH;
+        let mut system_time_max = system_time_min.add(Duration::from_secs(3600 * 24 * 365 * 100));
         let mut count = 0f32;
         let mut time = 1f32;
-        for (i, (_, _, t)) in self.deque.iter().rev().enumerate() {
-            let ntp = *t.unwrap().get_time();
-            ntp_max = ntp_max.max(ntp);
-            ntp_min = ntp_min.min(ntp);
+        for (i, d) in self.deque.iter().rev().enumerate() {
+            let t = d.1;
+            system_time_max = system_time_max.max(t);
+            system_time_min = system_time_min.min(t);
             count = i as f32;
-            time = (ntp_max - ntp_min).to_duration().as_secs_f32();
+            time = system_time_max
+                .duration_since(system_time_min)
+                .unwrap_or(Duration::default())
+                .as_secs() as f32;
             if i >= 100 {
                 break;
             }

@@ -40,6 +40,6 @@ fn main() {
         ..NativeOptions::default()
     };
     let app = AppHexViewer::default();
-    let create: AppCreator = Box::new(|cc| Box::new(app));
+    let create: AppCreator = Box::new(|cc| Ok(Box::new(app)));
     let _ = eframe::run_native("HexViewer", options, create);
 }

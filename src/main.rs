@@ -29,7 +29,7 @@ fn main() {
     let hammer_app = HammerApp::default();
     let create: AppCreator = Box::new(|cc| {
         cc.egui_ctx.set_fonts(fonts);
-        Box::new(hammer_app)
+        Ok(Box::new(hammer_app))
     });
     let _ = eframe::run_native("Zenoh Hammer", options, create);
 }
