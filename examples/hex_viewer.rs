@@ -5,8 +5,9 @@ use eframe::{
     egui::{CentralPanel, Context},
     AppCreator, Frame, HardwareAcceleration, NativeOptions,
 };
+use std::sync::Arc;
 
-use crate::hex_viewer::{HexViewer, HEX_VIEWER_SIZE};
+use crate::hex_viewer::HexViewer;
 
 struct AppHexViewer {
     viewer: HexViewer,
@@ -14,14 +15,14 @@ struct AppHexViewer {
 
 impl Default for AppHexViewer {
     fn default() -> Self {
+        let len = 4 * 1024 + 512;
+        let mut vec = Vec::with_capacity(len);
+        for i in 0..len {
+            vec.push(i as u8);
+        }
+
         AppHexViewer {
-            viewer: HexViewer::new({
-                let mut vec = Vec::with_capacity(HEX_VIEWER_SIZE);
-                for i in 0..HEX_VIEWER_SIZE {
-                    vec.push(i as u8);
-                }
-                vec
-            }),
+            viewer: HexViewer::new({ Arc::new(vec) }),
         }
     }
 }

@@ -7,6 +7,7 @@ mod page_put;
 mod page_session;
 mod page_sub;
 mod zenoh;
+mod sample_viewer;
 
 use eframe::egui::ViewportBuilder;
 use eframe::{icon_data::from_png_bytes, AppCreator, HardwareAcceleration, NativeOptions};

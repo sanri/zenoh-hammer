@@ -16,17 +16,17 @@ use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
 use image;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::ops::Add;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, VecDeque},
+    ops::Add,
     str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use zenoh::bytes::{Encoding, ZBytes};
-use zenoh::sample::SampleKind;
 use zenoh::{
+    bytes::{Encoding, ZBytes},
     key_expr::OwnedKeyExpr,
-    sample::Sample,
+    sample::{Sample, SampleKind},
     time::{Timestamp, TimestampId, NTP64},
 };
 
@@ -364,10 +364,11 @@ impl PageSub {
             let show_body = |mut body: TableBody| {
                 let key = &selected_key;
                 if let Some(sd) = data_group.map.get(selected_key.as_str()) {
-                    for (d, k, t) in &sd.deque {
+                    for (s, t) in &sd.deque {
                         body.row(20.0, |mut row| {
                             row.col(|ui| {
-                                let text: Option<RichText> = value_create_rich_text(d);
+                                let text: Option<RichText> =
+                                    value_create_rich_text(s.encoding(), s.payload());
                                 if let Some(text) = text {
                                     if ui.button(text).clicked() {
                                         self.show_view_value_window = true;
@@ -498,7 +499,7 @@ impl Frequency {
 }
 
 struct DataValues {
-    deque: VecDeque<(Sample, SystemTime)>,
+    deque: VecDeque<(Arc<Sample>, SystemTime)>,
     buffer_size: usize,
     lately_local_timestamp: SystemTime,
 }
@@ -806,7 +807,7 @@ impl ViewValueWindow {
         let window = egui::Window::new("Info")
             .id(Id::new("view value window"))
             .collapsible(false)
-            .scroll2([true, true])
+            .scroll([true, true])
             .open(is_open)
             .resizable(true)
             .default_width(200.0)
@@ -923,13 +924,7 @@ impl ViewValueWindow {
         self.image_texture_handle = None;
     }
 
-    fn clone_from(
-        &mut self,
-        value: &Value,
-        key: &String,
-        kind: &SampleKind,
-        timestamp: &Option<Timestamp>,
-    ) {
+    fn clone_from(&mut self, sample: Sample) {
         self.key = key.clone();
         self.kind = kind.clone();
         self.timestamp = timestamp.clone();

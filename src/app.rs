@@ -386,76 +386,76 @@ impl HammerApp {
     }
 }
 
-pub fn value_create_rich_text(encoding: KnownEncoding, data: &ZBytes) -> Option<RichText> {
-    match encoding {
-        KnownEncoding::ZBytes => {}
-        KnownEncoding::ZInt8 => {}
-        KnownEncoding::ZInt16 => {}
-        KnownEncoding::ZInt32 => {}
-        KnownEncoding::ZInt64 => {}
-        KnownEncoding::ZInt128 => {}
-        KnownEncoding::ZUint8 => {}
-        KnownEncoding::ZUint16 => {}
-        KnownEncoding::ZUint32 => {}
-        KnownEncoding::ZUint64 => {}
-        KnownEncoding::ZUint128 => {}
-        KnownEncoding::ZFloat32 => {}
-        KnownEncoding::ZFloat64 => {}
-        KnownEncoding::ZBool => {}
-        KnownEncoding::ZString => {}
-        KnownEncoding::ZError => {}
-        KnownEncoding::AppOctetStream => {}
-        KnownEncoding::TextPlain => {}
-        KnownEncoding::AppJson => {}
-        KnownEncoding::TextJson => {}
-        KnownEncoding::AppCdr => {}
-        KnownEncoding::AppCbor => {}
-        KnownEncoding::AppYaml => {}
-        KnownEncoding::TextYaml => {}
-        KnownEncoding::TextJson5 => {}
-        KnownEncoding::AppPythonSerializedObject => {}
-        KnownEncoding::AppProtobuf => {}
-        KnownEncoding::AppJavaSerializedObject => {}
-        KnownEncoding::AppOpenMetricsText => {}
-        KnownEncoding::ImagePng => {}
-        KnownEncoding::ImageJpeg => {}
-        KnownEncoding::ImageGif => {}
-        KnownEncoding::ImageBmp => {}
-        KnownEncoding::ImageWebP => {}
-        KnownEncoding::AppXml => {}
-        KnownEncoding::AppXWwwFormUrlencoded => {}
-        KnownEncoding::TextHtml => {}
-        KnownEncoding::TextXml => {}
-        KnownEncoding::TextCss => {}
-        KnownEncoding::TextJavascript => {}
-        KnownEncoding::TextMarkdown => {}
-        KnownEncoding::TextCsv => {}
-        KnownEncoding::AppSql => {}
-        KnownEncoding::AppCoapPayload => {}
-        KnownEncoding::AppJsonPathJson => {}
-        KnownEncoding::AppJsonSeq => {}
-        KnownEncoding::AppJsonPath => {}
-        KnownEncoding::AppJwt => {}
-        KnownEncoding::AppMp4 => {}
-        KnownEncoding::AppSoapXml => {}
-        KnownEncoding::AppYang => {}
-        KnownEncoding::AudioAac => {}
-        KnownEncoding::AudioFlac => {}
-        KnownEncoding::AudioMp4 => {}
-        KnownEncoding::AudioOgg => {}
-        KnownEncoding::AudioVorbis => {}
-        KnownEncoding::VideoH261 => {}
-        KnownEncoding::VideoH263 => {}
-        KnownEncoding::VideoH264 => {}
-        KnownEncoding::VideoH265 => {}
-        KnownEncoding::VideoH266 => {}
-        KnownEncoding::VideoMp4 => {}
-        KnownEncoding::VideoOgg => {}
-        KnownEncoding::VideoRaw => {}
-        KnownEncoding::VideoVp8 => {}
-        KnownEncoding::VideoVp9 => {}
-    }
-
+pub fn value_create_rich_text(encoding:&Encoding, data: &ZBytes) -> Option<RichText> {
+    // match encoding {
+    //     KnownEncoding::ZBytes => {}
+    //     KnownEncoding::ZInt8 => {}
+    //     KnownEncoding::ZInt16 => {}
+    //     KnownEncoding::ZInt32 => {}
+    //     KnownEncoding::ZInt64 => {}
+    //     KnownEncoding::ZInt128 => {}
+    //     KnownEncoding::ZUint8 => {}
+    //     KnownEncoding::ZUint16 => {}
+    //     KnownEncoding::ZUint32 => {}
+    //     KnownEncoding::ZUint64 => {}
+    //     KnownEncoding::ZUint128 => {}
+    //     KnownEncoding::ZFloat32 => {}
+    //     KnownEncoding::ZFloat64 => {}
+    //     KnownEncoding::ZBool => {}
+    //     KnownEncoding::ZString => {}
+    //     KnownEncoding::ZError => {}
+    //     KnownEncoding::AppOctetStream => {}
+    //     KnownEncoding::TextPlain => {}
+    //     KnownEncoding::AppJson => {}
+    //     KnownEncoding::TextJson => {}
+    //     KnownEncoding::AppCdr => {}
+    //     KnownEncoding::AppCbor => {}
+    //     KnownEncoding::AppYaml => {}
+    //     KnownEncoding::TextYaml => {}
+    //     KnownEncoding::TextJson5 => {}
+    //     KnownEncoding::AppPythonSerializedObject => {}
+    //     KnownEncoding::AppProtobuf => {}
+    //     KnownEncoding::AppJavaSerializedObject => {}
+    //     KnownEncoding::AppOpenMetricsText => {}
+    //     KnownEncoding::ImagePng => {}
+    //     KnownEncoding::ImageJpeg => {}
+    //     KnownEncoding::ImageGif => {}
+    //     KnownEncoding::ImageBmp => {}
+    //     KnownEncoding::ImageWebP => {}
+    //     KnownEncoding::AppXml => {}
+    //     KnownEncoding::AppXWwwFormUrlencoded => {}
+    //     KnownEncoding::TextHtml => {}
+    //     KnownEncoding::TextXml => {}
+    //     KnownEncoding::TextCss => {}
+    //     KnownEncoding::TextJavascript => {}
+    //     KnownEncoding::TextMarkdown => {}
+    //     KnownEncoding::TextCsv => {}
+    //     KnownEncoding::AppSql => {}
+    //     KnownEncoding::AppCoapPayload => {}
+    //     KnownEncoding::AppJsonPathJson => {}
+    //     KnownEncoding::AppJsonSeq => {}
+    //     KnownEncoding::AppJsonPath => {}
+    //     KnownEncoding::AppJwt => {}
+    //     KnownEncoding::AppMp4 => {}
+    //     KnownEncoding::AppSoapXml => {}
+    //     KnownEncoding::AppYang => {}
+    //     KnownEncoding::AudioAac => {}
+    //     KnownEncoding::AudioFlac => {}
+    //     KnownEncoding::AudioMp4 => {}
+    //     KnownEncoding::AudioOgg => {}
+    //     KnownEncoding::AudioVorbis => {}
+    //     KnownEncoding::VideoH261 => {}
+    //     KnownEncoding::VideoH263 => {}
+    //     KnownEncoding::VideoH264 => {}
+    //     KnownEncoding::VideoH265 => {}
+    //     KnownEncoding::VideoH266 => {}
+    //     KnownEncoding::VideoMp4 => {}
+    //     KnownEncoding::VideoOgg => {}
+    //     KnownEncoding::VideoRaw => {}
+    //     KnownEncoding::VideoVp8 => {}
+    //     KnownEncoding::VideoVp9 => {}
+    // }
+    //
     Some(RichText::new("..."))
     // match d.encoding.prefix() {
     //     KnownEncoding::AppOctetStream => Some(RichText::new("...")),
