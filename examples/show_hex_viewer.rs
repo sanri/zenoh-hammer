@@ -22,13 +22,13 @@ impl Default for AppHexViewer {
         }
 
         AppHexViewer {
-            viewer: HexViewer::new({ Arc::new(vec) }),
+            viewer: HexViewer::new(Arc::new(vec)),
         }
     }
 }
 
 impl eframe::App for AppHexViewer {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
             self.viewer.show(ui);
         });
@@ -41,6 +41,6 @@ fn main() {
         ..NativeOptions::default()
     };
     let app = AppHexViewer::default();
-    let create: AppCreator = Box::new(|cc| Ok(Box::new(app)));
+    let create: AppCreator = Box::new(|_cc| Ok(Box::new(app)));
     let _ = eframe::run_native("HexViewer", options, create);
 }

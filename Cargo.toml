@@ -4,8 +4,12 @@ version = "0.5.0"
 edition = "2021"
 
 [[example]]
-name = "hex_viewer"
-path = "examples/hex_viewer.rs"
+name = "show_hex_viewer"
+path = "examples/show_hex_viewer.rs"
+
+[[example]]
+name = "show_sample_viewer"
+path = "examples/show_sample_viewer.rs"
 
 [profile.release-lto]
 inherits = "release"
@@ -18,17 +22,19 @@ egui_extras = { version = "0.28" }
 egui_file = { version = "0.18" }
 egui_dnd = { version = "0.9" }
 egui_json_tree = { version = "0.6" }
-zenoh = { version = "1.0.0-beta.2", features = [ "default", "unstable" ] }
+zenoh = { version = "1.0.0-beta.2", features = [ "default", "unstable", "internal" ] }
 tokio = { version = "1.39", default-features = false }
 tokio-util = { version = "0.7" }
 flume = { version = "0.11" }
 strum = { version = "0.26", features = [ "derive" ] }
+num_enum = { version = "0.7" }
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
+json5 = { version = "0.4" }
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
 uhlc = { version = "0.8" }
 uuid = { version = "1.10" }
 arboard = { version = "3.4" }
-image = { version = "0.25", default-features = false, features = [ "png", "jpeg", "bmp" ] }
+image = { version = "0.25", default-features = false, features = [ "png", "jpeg", "bmp", "gif", "webp" ] }
 static-toml = { version = "1.2" }

@@ -6,7 +6,7 @@ use crate::{
     page_session::PageSession,
     page_sub,
     page_sub::PageSub,
-    zenoh::{KnownEncoding, MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
+    task_zenoh::{KnownEncoding, MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
 };
 use eframe::{
     egui,
@@ -324,7 +324,7 @@ impl HammerApp {
                             Receiver<MsgGuiToZenoh>,
                         ) = unbounded();
 
-                        crate::zenoh::start_async(sender_to_gui, receiver_from_gui, *c);
+                        crate::task_zenoh::start_async(sender_to_gui, receiver_from_gui, *c);
 
                         self.sender_to_zenoh = Some(sender_to_zenoh);
                         self.receiver_from_zenoh = Some(receiver_from_zenoh);

@@ -6,8 +6,9 @@ mod page_get;
 mod page_put;
 mod page_session;
 mod page_sub;
-mod zenoh;
+mod task_zenoh;
 mod sample_viewer;
+mod zenoh_data;
 
 use eframe::egui::ViewportBuilder;
 use eframe::{icon_data::from_png_bytes, AppCreator, HardwareAcceleration, NativeOptions};

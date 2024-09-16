@@ -1,7 +1,7 @@
 use crate::{
     app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
     hex_viewer::HexViewer,
-    zenoh::QueryData,
+    task_zenoh::QueryData,
 };
 use arboard::Clipboard;
 use eframe::{
@@ -22,7 +22,7 @@ use std::{
 use zenoh::query::{ConsolidationMode, Reply};
 use zenoh::query::{QueryConsolidation, QueryTarget};
 use zenoh::sample::Locality;
-use crate::zenoh::KnownEncoding;
+use crate::task_zenoh::KnownEncoding;
 
 // query
 pub enum Event {

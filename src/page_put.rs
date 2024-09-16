@@ -19,76 +19,11 @@ use std::{
 };
 use zenoh::qos::{CongestionControl, Priority};
 
-use crate::{app::ZenohValue, zenoh::PutData};
-use crate::zenoh::KnownEncoding;
+use crate::{app::ZenohValue, task_zenoh::PutData};
+use crate::zenoh_data::{KnownEncoding, ZCongestionControl, ZPriority};
 
 pub enum Event {
     Put(Box<PutData>),
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZCongestionControl {
-    Block,
-    Drop,
-}
-
-impl From<CongestionControl> for ZCongestionControl {
-    fn from(value: CongestionControl) -> Self {
-        match value {
-            CongestionControl::Block => ZCongestionControl::Block,
-            CongestionControl::Drop => ZCongestionControl::Drop,
-        }
-    }
-}
-
-impl Into<CongestionControl> for ZCongestionControl {
-    fn into(self) -> CongestionControl {
-        match self {
-            ZCongestionControl::Block => CongestionControl::Block,
-            ZCongestionControl::Drop => CongestionControl::Drop,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZPriority {
-    RealTime,
-    InteractiveHigh,
-    InteractiveLow,
-    DataHigh,
-    Data,
-    DataLow,
-    Background,
-}
-
-impl From<Priority> for ZPriority {
-    fn from(value: Priority) -> Self {
-        match value {
-            Priority::RealTime => ZPriority::RealTime,
-            Priority::InteractiveHigh => ZPriority::InteractiveHigh,
-            Priority::InteractiveLow => ZPriority::InteractiveLow,
-            Priority::DataHigh => ZPriority::DataHigh,
-            Priority::Data => ZPriority::Data,
-            Priority::DataLow => ZPriority::DataLow,
-            Priority::Background => ZPriority::Background,
-        }
-    }
-}
-
-impl Into<Priority> for ZPriority {
-    fn into(self) -> Priority {
-        match self {
-            ZPriority::RealTime => Priority::RealTime,
-            ZPriority::InteractiveHigh => Priority::InteractiveHigh,
-            ZPriority::InteractiveLow => Priority::InteractiveLow,
-            ZPriority::DataHigh => Priority::DataHigh,
-            ZPriority::Data => Priority::Data,
-            ZPriority::DataLow => Priority::DataLow,
-            ZPriority::Background => Priority::Background,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
