@@ -10,10 +10,9 @@ use zenoh::{
     bytes::{Encoding, ZBytes},
     key_expr::OwnedKeyExpr,
     pubsub::Subscriber,
-    qos::{CongestionControl, Priority, QoSBuilderTrait},
+    qos::{CongestionControl, Priority},
     query::{QueryConsolidation, QueryTarget, Reply},
     sample::{Locality, Sample},
-    session::SessionDeclarations,
     Config, Session,
 };
 
@@ -161,7 +160,7 @@ async fn loop_zenoh(
 
 async fn task_subscriber(
     id: u64,
-    subscriber: Subscriber<'_, Receiver<Sample>>,
+    subscriber: Subscriber<Receiver<Sample>>,
     close_receiver: Receiver<()>,
     sender_to_gui: Sender<MsgZenohToGui>,
 ) {

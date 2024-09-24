@@ -1,13 +1,3 @@
-use crate::{
-    file::AppStoreData,
-    page_get::PageGet,
-    page_put::PagePut,
-    page_session,
-    page_session::PageSession,
-    page_sub,
-    page_sub::PageSub,
-    task_zenoh::{KnownEncoding, MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
-};
 use eframe::{
     egui,
     egui::{Color32, Context, Id, Layout, RichText, TextBuffer, Ui},
@@ -20,7 +10,17 @@ use serde::{Deserialize, Serialize};
 use static_toml::static_toml;
 use std::{path::PathBuf, time::Duration};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
-use zenoh::bytes::{Encoding, ZBytes};
+
+use crate::{
+    file::AppStoreData,
+    page_get::PageGet,
+    page_put::PagePut,
+    page_session,
+    page_session::PageSession,
+    page_sub,
+    page_sub::PageSub,
+    task_zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
+};
 
 static_toml! {
     static CARGO_INFO = include_toml!("Cargo.toml");
@@ -171,7 +171,8 @@ impl HammerApp {
 
         ui.menu_button("help", |ui| {
             ui.set_min_width(80.0);
-            ui.style_mut().wrap = Some(false);
+            // ui.style_mut().wrap = Some(false);
+            // ui.style_mut().wrap_mode = Some();
 
             if ui.add(egui::Button::new("about")).clicked() {
                 self.show_about = true;
@@ -384,142 +385,6 @@ impl HammerApp {
             }
         }
     }
-}
-
-pub fn value_create_rich_text(encoding:&Encoding, data: &ZBytes) -> Option<RichText> {
-    // match encoding {
-    //     KnownEncoding::ZBytes => {}
-    //     KnownEncoding::ZInt8 => {}
-    //     KnownEncoding::ZInt16 => {}
-    //     KnownEncoding::ZInt32 => {}
-    //     KnownEncoding::ZInt64 => {}
-    //     KnownEncoding::ZInt128 => {}
-    //     KnownEncoding::ZUint8 => {}
-    //     KnownEncoding::ZUint16 => {}
-    //     KnownEncoding::ZUint32 => {}
-    //     KnownEncoding::ZUint64 => {}
-    //     KnownEncoding::ZUint128 => {}
-    //     KnownEncoding::ZFloat32 => {}
-    //     KnownEncoding::ZFloat64 => {}
-    //     KnownEncoding::ZBool => {}
-    //     KnownEncoding::ZString => {}
-    //     KnownEncoding::ZError => {}
-    //     KnownEncoding::AppOctetStream => {}
-    //     KnownEncoding::TextPlain => {}
-    //     KnownEncoding::AppJson => {}
-    //     KnownEncoding::TextJson => {}
-    //     KnownEncoding::AppCdr => {}
-    //     KnownEncoding::AppCbor => {}
-    //     KnownEncoding::AppYaml => {}
-    //     KnownEncoding::TextYaml => {}
-    //     KnownEncoding::TextJson5 => {}
-    //     KnownEncoding::AppPythonSerializedObject => {}
-    //     KnownEncoding::AppProtobuf => {}
-    //     KnownEncoding::AppJavaSerializedObject => {}
-    //     KnownEncoding::AppOpenMetricsText => {}
-    //     KnownEncoding::ImagePng => {}
-    //     KnownEncoding::ImageJpeg => {}
-    //     KnownEncoding::ImageGif => {}
-    //     KnownEncoding::ImageBmp => {}
-    //     KnownEncoding::ImageWebP => {}
-    //     KnownEncoding::AppXml => {}
-    //     KnownEncoding::AppXWwwFormUrlencoded => {}
-    //     KnownEncoding::TextHtml => {}
-    //     KnownEncoding::TextXml => {}
-    //     KnownEncoding::TextCss => {}
-    //     KnownEncoding::TextJavascript => {}
-    //     KnownEncoding::TextMarkdown => {}
-    //     KnownEncoding::TextCsv => {}
-    //     KnownEncoding::AppSql => {}
-    //     KnownEncoding::AppCoapPayload => {}
-    //     KnownEncoding::AppJsonPathJson => {}
-    //     KnownEncoding::AppJsonSeq => {}
-    //     KnownEncoding::AppJsonPath => {}
-    //     KnownEncoding::AppJwt => {}
-    //     KnownEncoding::AppMp4 => {}
-    //     KnownEncoding::AppSoapXml => {}
-    //     KnownEncoding::AppYang => {}
-    //     KnownEncoding::AudioAac => {}
-    //     KnownEncoding::AudioFlac => {}
-    //     KnownEncoding::AudioMp4 => {}
-    //     KnownEncoding::AudioOgg => {}
-    //     KnownEncoding::AudioVorbis => {}
-    //     KnownEncoding::VideoH261 => {}
-    //     KnownEncoding::VideoH263 => {}
-    //     KnownEncoding::VideoH264 => {}
-    //     KnownEncoding::VideoH265 => {}
-    //     KnownEncoding::VideoH266 => {}
-    //     KnownEncoding::VideoMp4 => {}
-    //     KnownEncoding::VideoOgg => {}
-    //     KnownEncoding::VideoRaw => {}
-    //     KnownEncoding::VideoVp8 => {}
-    //     KnownEncoding::VideoVp9 => {}
-    // }
-    //
-    Some(RichText::new("..."))
-    // match d.encoding.prefix() {
-    //     KnownEncoding::AppOctetStream => Some(RichText::new("...")),
-    //     KnownEncoding::TextPlain => Some(text_plant_create_rich_text(d)),
-    //     KnownEncoding::AppJson => Some(json_create_rich_text(d)),
-    //     KnownEncoding::AppInteger => Some(i64_create_rich_text(d)),
-    //     KnownEncoding::AppFloat => Some(f64_create_rich_text(d)),
-    //     KnownEncoding::TextJson => Some(json_create_rich_text(d)),
-    //     KnownEncoding::Empty => None,
-    //     KnownEncoding::AppCustom => Some(RichText::new("...")),
-    //     KnownEncoding::AppProperties => None,
-    //     KnownEncoding::AppSql => Some(RichText::new("...")),
-    //     KnownEncoding::AppXml => Some(RichText::new("...")),
-    //     KnownEncoding::AppXhtmlXml => Some(RichText::new("...")),
-    //     KnownEncoding::AppXWwwFormUrlencoded => None,
-    //     KnownEncoding::TextHtml => Some(RichText::new("...")),
-    //     KnownEncoding::TextXml => Some(RichText::new("...")),
-    //     KnownEncoding::TextCss => Some(RichText::new("...")),
-    //     KnownEncoding::TextCsv => Some(RichText::new("...")),
-    //     KnownEncoding::TextJavascript => Some(RichText::new("...")),
-    //     KnownEncoding::ImageJpeg => Some(RichText::new("◪")),
-    //     KnownEncoding::ImagePng => Some(RichText::new("◪")),
-    //     KnownEncoding::ImageGif => None,
-    // }
-}
-
-pub fn i64_create_rich_text(d: &ZBytes) -> RichText {
-    let text: RichText = match d.deserialize::<i64>() {
-        Ok(o) => RichText::new(format!("{}", o)).monospace(),
-        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-    };
-    text
-}
-
-pub fn f64_create_rich_text(d: &ZBytes) -> RichText {
-    let text: RichText = match d.deserialize::<f64>() {
-        Ok(o) => RichText::new(format!("{}", o)).monospace(),
-        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-    };
-    text
-}
-
-pub fn text_plant_create_rich_text(d: &ZBytes) -> RichText {
-    let text: RichText = if d.len() < 30 {
-        match String::try_from(d) {
-            Ok(o) => RichText::new(o).monospace(),
-            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-        }
-    } else {
-        RichText::new("...")
-    };
-    text
-}
-
-pub fn json_create_rich_text(d: &ZBytes) -> RichText {
-    let text: RichText = if d.len() < 30 {
-        match serde_json::Value::try_from(d) {
-            Ok(o) => RichText::new(format!("{}", o)).monospace(),
-            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-        }
-    } else {
-        RichText::new("...")
-    };
-    text
 }
 
 #[derive(Serialize, Deserialize, Clone)]

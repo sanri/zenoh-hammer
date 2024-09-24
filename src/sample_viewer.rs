@@ -28,6 +28,17 @@ pub struct SampleViewer {
     viewer_data: ViewerData,
 }
 
+impl Default for SampleViewer {
+    fn default() -> Self {
+        SampleViewer {
+            selected_page: SampleViewerPage::Raw,
+            base_info: BaseInfo::default(),
+            hex_view: HexViewer::new(Arc::new(Vec::new())),
+            viewer_data: ViewerData::Bin,
+        }
+    }
+}
+
 impl SampleViewer {
     pub fn new_from_sample(sample: &Sample) -> Self {
         let base_info = BaseInfo::new_from(sample);
@@ -109,6 +120,23 @@ pub struct BaseInfo {
     pub express: bool,
     pub source_info: SourceInfo,
     pub attachment: Vec<u8>,
+}
+
+impl Default for BaseInfo {
+    fn default() -> Self {
+        BaseInfo {
+            key: "demo".to_string(),
+            encoding: Encoding::ZENOH_BYTES,
+            kind: SampleKind::Put,
+            timestamp: None,
+            congestion_control: ZCongestionControl::Block,
+            priority: ZPriority::RealTime,
+            reliability: ZReliability::Reliable,
+            express: false,
+            source_info: SourceInfo::new(None, None),
+            attachment: Vec::new(),
+        }
+    }
 }
 
 impl BaseInfo {
