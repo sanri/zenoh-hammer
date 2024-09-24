@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use strum::AsRefStr;
 use zenoh::{
     bytes::Encoding,
-    pubsub::Reliability,
-    qos::{CongestionControl, Priority},
+    qos::{CongestionControl, Priority, Reliability},
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, FromPrimitive)]

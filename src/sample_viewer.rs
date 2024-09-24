@@ -1,5 +1,9 @@
-use eframe::egui::{ColorImage, Grid, RichText, TextureHandle, Ui};
+use eframe::egui::{
+    CollapsingHeader, Color32, ColorImage, Grid, RichText, TextEdit, TextureHandle, TextureOptions,
+    Ui, Widget,
+};
 use egui_json_tree::JsonTree;
+use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
 use image::{ImageFormat, ImageReader};
 use std::{
     borrow::Cow,
@@ -70,7 +74,7 @@ impl SampleViewer {
                 self.hex_view.show(ui);
             }
             SampleViewerPage::Parse => {
-                // self.viewer_data.show(ui);
+                self.viewer_data.show(ui);
             }
         }
     }
@@ -179,7 +183,7 @@ impl BaseInfo {
             ui.end_row();
 
             ui.label("source_info. id:");
-            let s = match self.source_info.source_id {
+            let s = match self.source_info.source_id() {
                 None => "-".to_string(),
                 Some(o) => {
                     format!("{:?}", o)
@@ -190,7 +194,7 @@ impl BaseInfo {
             ui.end_row();
 
             ui.label("source_info. sn:");
-            let s = match self.source_info.source_sn {
+            let s = match self.source_info.source_sn() {
                 None => "-".to_string(),
                 Some(o) => {
                     format!("{}", o)
@@ -221,10 +225,14 @@ impl BaseInfo {
             ui.end_row();
         };
 
-        Grid::new("sample_viewer_base_info_grid")
-            .num_columns(2)
+        CollapsingHeader::new("Base info")
+            .default_open(true)
             .show(ui, |ui| {
-                show_ui(ui);
+                Grid::new("sample_viewer_base_info_grid")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        show_ui(ui);
+                    });
             });
     }
 }
@@ -235,11 +243,19 @@ enum SampleViewerPage {
     Parse,
 }
 
+#[derive(Eq, PartialEq, Copy, Clone)]
+enum ViewerJsonPage {
+    Source,
+    Format,
+    Tree,
+}
+
 enum ViewerData {
     Simple(String),
     Bin,
     Text(String),
     Json {
+        selected_page: ViewerJsonPage,
         source: String,
         format: String,
         serde_json_value: serde_json::Value,
@@ -255,7 +271,135 @@ enum ViewerData {
 
 impl ViewerData {
     fn show(&mut self, ui: &mut Ui) {
-        todo!()
+        match self {
+            ViewerData::Simple(s) => {
+                let rich_text = RichText::new(s.as_str()).monospace();
+                ui.label(rich_text);
+            }
+            ViewerData::Bin => {
+                let rich_text = RichText::new("This is binary data")
+                    .underline()
+                    .color(Color32::RED)
+                    .strong();
+                ui.label(rich_text);
+            }
+            ViewerData::Text(s) => {
+                let text_edit = TextEdit::multiline(s)
+                    .desired_width(f32::INFINITY)
+                    .code_editor();
+                text_edit.ui(ui);
+            }
+            ViewerData::Json {
+                selected_page,
+                source,
+                format,
+                serde_json_value,
+            } => {
+                Self::show_json_tab(ui, selected_page);
+                match selected_page {
+                    ViewerJsonPage::Source => {
+                        let text_edit = TextEdit::multiline(source)
+                            .desired_width(f32::INFINITY)
+                            .code_editor();
+                        text_edit.ui(ui);
+                    }
+                    ViewerJsonPage::Format => {
+                        let text_edit = TextEdit::multiline(format)
+                            .desired_width(f32::INFINITY)
+                            .code_editor();
+                        text_edit.ui(ui);
+                    }
+                    ViewerJsonPage::Tree => {
+                        let json_tree = JsonTree::new("simple_viewer-json_tree", serde_json_value);
+                        json_tree.show(ui);
+                    }
+                }
+            }
+            ViewerData::Image {
+                color_image,
+                image_texture_handle,
+            } => {
+                if image_texture_handle.is_none() {
+                    let texture: TextureHandle = ui.ctx().load_texture(
+                        "simple_viewer-show_image",
+                        color_image.clone(),
+                        TextureOptions::NEAREST,
+                    );
+                    *image_texture_handle = Some(texture);
+                }
+
+                let texture: &TextureHandle = match image_texture_handle {
+                    None => {
+                        return;
+                    }
+                    Some(t) => t,
+                };
+
+                let image_size = texture.size_vec2();
+                let plot_image = PlotImage::new(
+                    texture,
+                    PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
+                    image_size,
+                )
+                .highlight(false);
+                let plot = Plot::new("sample_viewer_show_image_plot")
+                    .legend(Legend::default().position(Corner::RightTop))
+                    .show_x(true)
+                    .show_y(true)
+                    .show_axes([false, false])
+                    .show_grid(false)
+                    .allow_boxed_zoom(false)
+                    .allow_scroll(false)
+                    .show_background(false)
+                    .data_aspect(1.0);
+                plot.show(ui, |plot_ui| {
+                    plot_ui.image(plot_image);
+                });
+            }
+            ViewerData::Audio => {
+                let rich_text = RichText::new("This is audio data")
+                    .underline()
+                    .color(Color32::RED)
+                    .strong();
+                ui.label(rich_text);
+            }
+            ViewerData::Video => {
+                let rich_text = RichText::new("This is video data")
+                    .underline()
+                    .color(Color32::RED)
+                    .strong();
+                ui.label(rich_text);
+            }
+            ViewerData::Error(s) => {
+                let rich_text = RichText::new(s.as_str()).monospace().color(Color32::RED);
+                ui.label(rich_text);
+            }
+        }
+    }
+
+    fn show_json_tab(ui: &mut Ui, selected_page: &mut ViewerJsonPage) {
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(*selected_page == ViewerJsonPage::Source, "source")
+                .clicked()
+            {
+                *selected_page = ViewerJsonPage::Source;
+            }
+
+            if ui
+                .selectable_label(*selected_page == ViewerJsonPage::Format, "format")
+                .clicked()
+            {
+                *selected_page = ViewerJsonPage::Format;
+            }
+
+            if ui
+                .selectable_label(*selected_page == ViewerJsonPage::Tree, "tree")
+                .clicked()
+            {
+                *selected_page = ViewerJsonPage::Tree;
+            }
+        });
     }
 
     fn load(encoding: &Encoding, data: &ZBytes, arc_data: Arc<Vec<u8>>) -> ViewerData {
@@ -389,8 +533,9 @@ impl ViewerData {
         };
         match serde_json::Value::try_from(data) {
             Ok(o) => ViewerData::Json {
+                selected_page: ViewerJsonPage::Source,
                 source,
-                format: serde_json::to_string(&o).unwrap(),
+                format: serde_json::to_string_pretty(&o).unwrap(),
                 serde_json_value: o,
             },
             Err(e) => ViewerData::Error(e.to_string()),
@@ -406,8 +551,9 @@ impl ViewerData {
         };
         match json5::from_str::<serde_json::Value>(source.as_str()) {
             Ok(o) => ViewerData::Json {
+                selected_page: ViewerJsonPage::Source,
                 source,
-                format: serde_json::to_string(&o).unwrap(),
+                format: serde_json::to_string_pretty(&o).unwrap(),
                 serde_json_value: o,
             },
             Err(e) => ViewerData::Error(e.to_string()),
