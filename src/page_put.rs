@@ -1,8 +1,8 @@
+use eframe::egui::{CentralPanel, SidePanel, TextBuffer};
 use eframe::{
-    egui,
     egui::{
-        Color32, ColorImage, Context, Layout, RichText, ScrollArea, TextEdit, TextStyle,
-        TextureHandle, TextureOptions, Ui,
+        Color32, ColorImage, ComboBox, Context, Grid, Layout, RichText, ScrollArea, TextEdit,
+        TextStyle, TextureHandle, TextureOptions, Ui,
     },
     emath::Align,
 };
@@ -17,10 +17,17 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use zenoh::qos::{CongestionControl, Priority};
+use strum::IntoEnumIterator;
+use zenoh::{
+    bytes::{Encoding, ZBytes},
+    key_expr::OwnedKeyExpr,
+};
 
-use crate::{app::ZenohValue, task_zenoh::PutData};
-use crate::zenoh_data::{KnownEncoding, ZCongestionControl, ZPriority};
+use crate::{
+    app::ZenohValue,
+    task_zenoh::PutData,
+    zenoh_data::{parse_str_to_vec, KnownEncoding, ZCongestionControl, ZPriority},
+};
 
 pub enum Event {
     Put(Box<PutData>),
@@ -32,7 +39,8 @@ pub struct DataItem {
     key: String,
     congestion_control: ZCongestionControl,
     priority: ZPriority,
-    value: ZenohValue,
+    encoding: u16,
+    payload: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -44,14 +52,15 @@ pub struct PagePutData {
     id: u64,
     name: String,
     input_key: String,
-    selected_congestion_control: CongestionControl,
-    selected_priority: Priority,
+    selected_congestion_control: ZCongestionControl,
+    selected_priority: ZPriority,
     selected_encoding: KnownEncoding,
-    edit_str: String,
+    encoding_schema_edit_str: String,
+    payload_edit_str: String,
     image_file_dialog: Option<FileDialog>,
     image_file_path: Option<PathBuf>,
     image_texture: Option<TextureHandle>,
-    pub info: Option<RichText>,
+    pub error_info: Option<RichText>,
 }
 
 impl Default for PagePutData {
@@ -60,14 +69,15 @@ impl Default for PagePutData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/example".to_string(),
-            selected_congestion_control: CongestionControl::Block,
-            selected_priority: Priority::RealTime,
+            selected_congestion_control: ZCongestionControl::Block,
+            selected_priority: ZPriority::RealTime,
             selected_encoding: KnownEncoding::TextPlain,
-            edit_str: String::new(),
+            encoding_schema_edit_str: String::new(),
+            payload_edit_str: String::new(),
             image_file_path: None,
             image_file_dialog: None,
             image_texture: None,
-            info: None,
+            error_info: None,
         }
     }
 }
@@ -82,16 +92,16 @@ impl PagePutData {
             selected_congestion_control: data.congestion_control.into(),
             selected_priority: data.priority.into(),
             selected_encoding: encoding,
-            edit_str: s,
+            payload_edit_str: s,
             image_file_path: None,
             image_file_dialog: None,
             image_texture: None,
-            info: None,
+            error_info: None,
         }
     }
 
     fn to(&self) -> DataItem {
-        let value = ZenohValue::from(self.selected_encoding, self.edit_str.clone());
+        let value = ZenohValue::from(self.selected_encoding, self.payload_edit_str.clone());
         DataItem {
             name: self.name.clone(),
             key: self.input_key.clone(),
@@ -109,11 +119,11 @@ impl PagePutData {
             selected_congestion_control: ppd.selected_congestion_control,
             selected_priority: ppd.selected_priority,
             selected_encoding: ppd.selected_encoding,
-            edit_str: ppd.edit_str.clone(),
+            payload_edit_str: ppd.payload_edit_str.clone(),
             image_file_path: None,
             image_file_dialog: None,
             image_texture: None,
-            info: None,
+            error_info: None,
         }
     }
 
@@ -134,14 +144,14 @@ impl PagePutData {
 
     fn show_name_key(&mut self, ui: &mut Ui) {
         let mut input_grid = |ui: &mut Ui| {
-            ui.label("name: ");
+            ui.label("name:");
             let te = TextEdit::singleline(&mut self.name)
                 .desired_width(600.0)
                 .font(TextStyle::Monospace);
             ui.add(te);
             ui.end_row();
 
-            ui.label("key: ");
+            ui.label("key:");
             let te = TextEdit::multiline(&mut self.input_key)
                 .desired_rows(2)
                 .desired_width(600.0)
@@ -150,7 +160,8 @@ impl PagePutData {
 
             ui.end_row();
         };
-        egui::Grid::new("input_grid")
+
+        Grid::new("input_grid")
             .num_columns(2)
             .striped(false)
             .show(ui, |ui| {
@@ -160,123 +171,318 @@ impl PagePutData {
 
     fn show_options(&mut self, ui: &mut Ui) {
         let mut show_grid = |ui: &mut Ui| {
-            ui.label("congestion control: ");
-            egui::ComboBox::new("congestion control", "")
-                .selected_text(format!("{:?}", self.selected_congestion_control))
+            ui.label("congestion control:");
+            ComboBox::new("congestion control", "")
+                .selected_text(self.selected_congestion_control.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [CongestionControl::Block, CongestionControl::Drop];
-                    for option in options {
+                    for option in ZCongestionControl::iter() {
                         ui.selectable_value(
                             &mut self.selected_congestion_control,
                             option,
-                            format!("{:?}", option),
+                            option.as_ref(),
                         );
                     }
                 });
             ui.end_row();
 
-            ui.label("priority: ");
-            egui::ComboBox::new("priority", "")
-                .selected_text(format!("{:?}", self.selected_priority))
+            ui.label("priority:");
+            ComboBox::new("priority", "")
+                .selected_text(self.selected_priority.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [
-                        Priority::RealTime,
-                        Priority::InteractiveHigh,
-                        Priority::InteractiveLow,
-                        Priority::DataHigh,
-                        Priority::Data,
-                        Priority::DataLow,
-                        Priority::Background,
-                    ];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_priority,
-                            option,
-                            format!("{:?}", option),
-                        );
+                    for option in ZPriority::iter() {
+                        ui.selectable_value(&mut self.selected_priority, option, option.as_ref());
                     }
                 });
             ui.end_row();
 
-            ui.label("encoding: ");
-            egui::ComboBox::new("encoding", "")
-                .selected_text(format!("{}", Encoding::Exact(self.selected_encoding)))
-                .show_ui(ui, |ui| {
-                    let options = [
-                        KnownEncoding::AppOctetStream,
-                        KnownEncoding::TextPlain,
-                        KnownEncoding::TextJson,
-                        KnownEncoding::AppJson,
-                        KnownEncoding::AppInteger,
-                        KnownEncoding::AppFloat,
-                        KnownEncoding::AppSql,
-                        KnownEncoding::AppXml,
-                        KnownEncoding::AppXhtmlXml,
-                        KnownEncoding::TextHtml,
-                        KnownEncoding::TextXml,
-                        KnownEncoding::TextCss,
-                        KnownEncoding::TextCsv,
-                        KnownEncoding::TextJavascript,
-                        KnownEncoding::ImageJpeg,
-                        KnownEncoding::ImagePng,
-                    ];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_encoding,
-                            option,
-                            format!("{}", Encoding::from(option)),
-                        );
-                    }
-                });
+            ui.label("encoding:");
+            ui.horizontal(|ui| {
+                ComboBox::new("encoding", "")
+                    .selected_text(format!("{}", self.selected_encoding.to_encoding()))
+                    .show_ui(ui, |ui| {
+                        for option in KnownEncoding::iter() {
+                            ui.selectable_value(
+                                &mut self.selected_encoding,
+                                option,
+                                format!("{}", option.to_encoding()),
+                            );
+                        }
+                    });
+            });
             ui.end_row();
         };
 
-        egui::Grid::new("options_grid")
+        Grid::new("options_grid")
             .num_columns(2)
             .striped(false)
             .show(ui, |ui| {
                 show_grid(ui);
             });
 
-        let text_edit_multiline = |edit_str: &mut String, info: &Option<RichText>, ui: &mut Ui| {
-            ui.label("value: ");
+        match self.selected_encoding {
+            KnownEncoding::TextPlain => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppJson => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            // KnownEncoding::AppInteger => {
+            // }
+            KnownEncoding::TextJson => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppOctetStream => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppSql => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppXml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppXWwwFormUrlencoded => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextHtml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextXml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextCss => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextCsv => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextJavascript => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::ImageJpeg => {
+                Self::image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.error_info,
+                    ImageFormat::Jpeg,
+                );
+            }
+            KnownEncoding::ImagePng => {
+                Self::image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.error_info,
+                    ImageFormat::Png,
+                );
+            }
+            KnownEncoding::ImageGif => {
+                Self::image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.error_info,
+                    ImageFormat::Gif,
+                );
+            }
+            KnownEncoding::ZBytes => {}
+            KnownEncoding::ZInt8 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZInt16 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZInt32 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZInt64 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZInt128 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZUint8 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZUint16 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZUint32 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZUint64 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZUint128 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZFloat32 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZFloat64 => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZBool => {
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
+            }
+            KnownEncoding::ZString => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::ZError => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppCdr => {}
+            KnownEncoding::AppCbor => {}
+            KnownEncoding::AppYaml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextYaml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::TextJson5 => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppPythonSerializedObject => {}
+            KnownEncoding::AppProtobuf => {}
+            KnownEncoding::AppJavaSerializedObject => {}
+            KnownEncoding::AppOpenMetricsText => {}
+            KnownEncoding::ImageBmp => {
+                Self::image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.error_info,
+                    ImageFormat::Bmp,
+                );
+            }
+            KnownEncoding::ImageWebP => {
+                Self::image_view(
+                    ui,
+                    &mut self.image_file_path,
+                    &mut self.image_file_dialog,
+                    &mut self.image_texture,
+                    &mut self.error_info,
+                    ImageFormat::WebP,
+                );
+            }
+            KnownEncoding::TextMarkdown => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppCoapPayload => {}
+            KnownEncoding::AppJsonPathJson => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppJsonSeq => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppJsonPath => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppJwt => {}
+            KnownEncoding::AppMp4 => {}
+            KnownEncoding::AppSoapXml => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+            KnownEncoding::AppYang => {}
+            KnownEncoding::AudioAac => {}
+            KnownEncoding::AudioFlac => {}
+            KnownEncoding::AudioMp4 => {}
+            KnownEncoding::AudioOgg => {}
+            KnownEncoding::AudioVorbis => {}
+            KnownEncoding::VideoH261 => {}
+            KnownEncoding::VideoH263 => {}
+            KnownEncoding::VideoH264 => {}
+            KnownEncoding::VideoH265 => {}
+            KnownEncoding::VideoH266 => {}
+            KnownEncoding::VideoMp4 => {}
+            KnownEncoding::VideoOgg => {}
+            KnownEncoding::VideoRaw => {}
+            KnownEncoding::VideoVp8 => {}
+            KnownEncoding::VideoVp9 => {}
+            KnownEncoding::Other(_) => {
+                Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
+            }
+        }
+    }
 
-            if let Some(rt) = info {
-                ui.label(rt.clone());
-            };
+    fn text_edit_multiline(edit_str: &mut String, info: &Option<RichText>, ui: &mut Ui) {
+        ui.label("value: ");
 
-            ui.add(
-                TextEdit::multiline(edit_str)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(3)
-                    .code_editor(),
-            );
+        if let Some(rt) = info {
+            ui.label(rt.clone());
         };
 
-        let image_view = |ui: &mut Ui,
-                          image_file_path: &mut Option<PathBuf>,
-                          image_file_dialog: &mut Option<FileDialog>,
-                          image_texture: &mut Option<TextureHandle>,
-                          info: &mut Option<RichText>,
-                          image_format: ImageFormat| {
-            ui.horizontal(|ui| {
-                ui.label("image path:");
-                if let Some(p) = image_file_path {
-                    let s = p.to_str().unwrap_or("").to_string();
-                    ui.label(s);
+        ui.add(
+            TextEdit::multiline(edit_str)
+                .desired_width(f32::INFINITY)
+                .desired_rows(3)
+                .code_editor(),
+        );
+    }
+
+    fn image_view(
+        ui: &mut Ui,
+        image_file_path: &mut Option<PathBuf>,
+        image_file_dialog: &mut Option<FileDialog>,
+        image_texture: &mut Option<TextureHandle>,
+        info: &mut Option<RichText>,
+        image_format: ImageFormat,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label("image path:");
+            if let Some(p) = image_file_path {
+                let s = p.to_str().unwrap_or("").to_string();
+                ui.label(s);
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("load").clicked() {
+                let mut dialog = FileDialog::open_file(image_file_path.clone())
+                    .show_new_folder(false)
+                    .show_rename(false);
+                dialog.open();
+                *image_file_dialog = Some(dialog);
+            }
+            if let Some(p) = image_file_path {
+                if ui.button("reload").clicked() {
+                    let file = p.to_path_buf();
+                    match Self::load_image(file.as_path(), ui.ctx()) {
+                        Ok((texture, format)) => {
+                            if Some(image_format) == format {
+                                *image_texture = Some(texture);
+                                *image_file_path = Some(file);
+                                *info = None;
+                            } else {
+                                let text = RichText::new("file format error").color(Color32::RED);
+                                *image_texture = None;
+                                *image_file_path = None;
+                                *info = Some(text);
+                            }
+                        }
+                        Err(e) => {
+                            let text = RichText::new(e).color(Color32::RED);
+                            *info = Some(text);
+                            *image_texture = None;
+                            *image_file_path = None;
+                        }
+                    }
                 }
-            });
-            ui.horizontal(|ui| {
-                if ui.button("load").clicked() {
-                    let mut dialog = FileDialog::open_file(image_file_path.clone())
-                        .show_new_folder(false)
-                        .show_rename(false);
-                    dialog.open();
-                    *image_file_dialog = Some(dialog);
-                }
-                if let Some(p) = image_file_path {
-                    if ui.button("reload").clicked() {
-                        let file = p.to_path_buf();
+            }
+        });
+
+        if let Some(rt) = info {
+            ui.label(rt.clone());
+        };
+
+        if let Some(dialog) = image_file_dialog {
+            if dialog.show(ui.ctx()).selected() {
+                if DialogType::OpenFile == dialog.dialog_type() {
+                    if let Some(file) = dialog.path() {
+                        let file = file.to_path_buf();
                         match Self::load_image(file.as_path(), ui.ctx()) {
                             Ok((texture, format)) => {
                                 if Some(image_format) == format {
@@ -286,9 +492,9 @@ impl PagePutData {
                                 } else {
                                     let text =
                                         RichText::new("file format error").color(Color32::RED);
+                                    *info = Some(text);
                                     *image_texture = None;
                                     *image_file_path = None;
-                                    *info = Some(text);
                                 }
                             }
                             Err(e) => {
@@ -300,122 +506,11 @@ impl PagePutData {
                         }
                     }
                 }
-            });
+            }
+        }
 
-            if let Some(rt) = info {
-                ui.label(rt.clone());
-            };
-
-            if let Some(dialog) = image_file_dialog {
-                if dialog.show(ui.ctx()).selected() {
-                    if DialogType::OpenFile == dialog.dialog_type() {
-                        if let Some(file) = dialog.path() {
-                            let file = file.to_path_buf();
-                            match Self::load_image(file.as_path(), ui.ctx()) {
-                                Ok((texture, format)) => {
-                                    if Some(image_format) == format {
-                                        *image_texture = Some(texture);
-                                        *image_file_path = Some(file);
-                                        *info = None;
-                                    } else {
-                                        let text =
-                                            RichText::new("file format error").color(Color32::RED);
-                                        *info = Some(text);
-                                        *image_texture = None;
-                                        *image_file_path = None;
-                                    }
-                                }
-                                Err(e) => {
-                                    let text = RichText::new(e).color(Color32::RED);
-                                    *info = Some(text);
-                                    *image_texture = None;
-                                    *image_file_path = None;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(image_texture) = image_texture {
-                Self::show_image(ui, image_texture);
-            }
-        };
-
-        match self.selected_encoding {
-            KnownEncoding::TextPlain => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppJson => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppInteger => {
-                if let Some(rt) = &self.info {
-                    ui.label(rt.clone());
-                };
-                ui.add(TextEdit::singleline(&mut self.edit_str));
-            }
-            KnownEncoding::AppFloat => {
-                if let Some(rt) = &self.info {
-                    ui.label(rt.clone());
-                };
-                ui.add(TextEdit::singleline(&mut self.edit_str));
-            }
-            KnownEncoding::TextJson => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::Empty => {}
-            KnownEncoding::AppOctetStream => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppCustom => {}
-            KnownEncoding::AppProperties => {}
-            KnownEncoding::AppSql => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppXml => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppXhtmlXml => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::AppXWwwFormUrlencoded => {}
-            KnownEncoding::TextHtml => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::TextXml => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::TextCss => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::TextCsv => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::TextJavascript => {
-                text_edit_multiline(&mut self.edit_str, &self.info, ui);
-            }
-            KnownEncoding::ImageJpeg => {
-                image_view(
-                    ui,
-                    &mut self.image_file_path,
-                    &mut self.image_file_dialog,
-                    &mut self.image_texture,
-                    &mut self.info,
-                    ImageFormat::Jpeg,
-                );
-            }
-            KnownEncoding::ImagePng => {
-                image_view(
-                    ui,
-                    &mut self.image_file_path,
-                    &mut self.image_file_dialog,
-                    &mut self.image_texture,
-                    &mut self.info,
-                    ImageFormat::Png,
-                );
-            }
-            KnownEncoding::ImageGif => {}
+        if let Some(image_texture) = image_texture {
+            Self::show_image(ui, image_texture);
         }
     }
 
@@ -475,138 +570,215 @@ impl PagePutData {
         });
     }
 
+    fn generate_payload(&self) -> Result<ZBytes, String> {
+        let z_bytes: ZBytes = match self.selected_encoding {
+            KnownEncoding::ZBytes => {
+                let v = parse_str_to_vec(self.payload_edit_str.as_str())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZInt8 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = i8::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZInt16 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = i16::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZInt32 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = i32::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZInt64 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = i64::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZInt128 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = i128::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZUint8 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = u8::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZUint16 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = u16::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZUint32 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = u32::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZUint64 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = u64::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZUint128 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = u128::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZFloat32 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = f32::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZFloat64 => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = f64::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZBool => {
+                let v_str = self
+                    .payload_edit_str
+                    .replace(&[' ', ',', '\t', '\n', '\r'], "");
+                let v = bool::from_str(v_str.as_str()).map_err(|e| e.to_string())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::ZString => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::ZError => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppOctetStream => {
+                let v = parse_str_to_vec(self.payload_edit_str.as_str())?;
+                ZBytes::from(v)
+            }
+            KnownEncoding::TextPlain => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppJson => {
+                let v = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                    .map_err(|e| e.to_string())?;
+                ZBytes::serialize(v)
+            }
+            KnownEncoding::TextJson => {
+                let v = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                    .map_err(|e| e.to_string())?;
+                ZBytes::serialize(v)
+            }
+            KnownEncoding::AppCdr => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppCbor => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppYaml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextYaml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextJson5 => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppPythonSerializedObject => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppProtobuf => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppJavaSerializedObject => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppOpenMetricsText => return Err("Not supported yet".to_string()),
+            KnownEncoding::ImagePng
+            | KnownEncoding::ImageJpeg
+            | KnownEncoding::ImageGif
+            | KnownEncoding::ImageBmp
+            | KnownEncoding::ImageWebP => {
+                if let Some(image_file) = &self.image_file_path {
+                    let d = std::fs::read(image_file.as_path()).map_err(|e| e.to_string())?;
+                    ZBytes::from(d)
+                } else {
+                    return Err("No image file is selected".to_string());
+                }
+            }
+            KnownEncoding::AppXml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppXWwwFormUrlencoded => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextHtml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextXml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextCss => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextJavascript => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextMarkdown => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::TextCsv => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppSql => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppCoapPayload => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppJsonPathJson => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppJsonSeq => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppJsonPath => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppJwt => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppMp4 => return Err("Not supported yet".to_string()),
+            KnownEncoding::AppSoapXml => ZBytes::from(self.payload_edit_str.as_str()),
+            KnownEncoding::AppYang => return Err("Not supported yet".to_string()),
+            KnownEncoding::AudioAac => return Err("Not supported yet".to_string()),
+            KnownEncoding::AudioFlac => return Err("Not supported yet".to_string()),
+            KnownEncoding::AudioMp4 => return Err("Not supported yet".to_string()),
+            KnownEncoding::AudioOgg => return Err("Not supported yet".to_string()),
+            KnownEncoding::AudioVorbis => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoH261 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoH263 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoH264 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoH265 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoH266 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoMp4 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoOgg => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoRaw => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoVp8 => return Err("Not supported yet".to_string()),
+            KnownEncoding::VideoVp9 => return Err("Not supported yet".to_string()),
+            KnownEncoding::Other(_) => {
+                let v = parse_str_to_vec(self.payload_edit_str.as_str())?;
+                ZBytes::from(v)
+            }
+        };
+
+        Ok(z_bytes)
+    }
+
     fn send(&mut self, events: &mut VecDeque<Event>) {
         let key_str = self.input_key.replace(&[' ', '\t', '\n', '\r'], "");
         let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_str.as_str()) {
             Ok(o) => o,
             Err(e) => {
                 let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                self.info = Some(rt);
+                self.error_info = Some(rt);
                 return;
             }
         };
-        let value = match self.selected_encoding {
-            KnownEncoding::AppJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
-                    let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                    self.info = Some(rt);
-                    return;
-                }
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppJson.into())
+
+        let payload: ZBytes = match self.generate_payload() {
+            Ok(o) => {
+                self.error_info = None;
+                o
             }
-            KnownEncoding::AppInteger => {
-                let i: i64 = match self.edit_str.parse::<i64>() {
-                    Ok(i) => i,
-                    Err(e) => {
-                        let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                        self.info = Some(rt);
-                        return;
-                    }
-                };
-                Value::from(i)
-            }
-            KnownEncoding::AppFloat => {
-                let f: f64 = match self.edit_str.parse::<f64>() {
-                    Ok(f) => f,
-                    Err(e) => {
-                        let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                        self.info = Some(rt);
-                        return;
-                    }
-                };
-                Value::from(f)
-            }
-            KnownEncoding::TextJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
-                    let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                    self.info = Some(rt);
-                    return;
-                }
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJson.into())
-            }
-            KnownEncoding::Empty => {
+            Err(e) => {
+                let rt = RichText::new(format!("{}", e)).color(Color32::RED);
+                self.error_info = Some(rt);
                 return;
-            }
-            KnownEncoding::AppOctetStream => {
-                Value::from(self.edit_str.as_bytes()).encoding(KnownEncoding::AppOctetStream.into())
-            }
-            KnownEncoding::AppCustom => {
-                return;
-            }
-            KnownEncoding::AppProperties => {
-                return;
-            }
-            KnownEncoding::AppXWwwFormUrlencoded => {
-                return;
-            }
-            KnownEncoding::ImageJpeg => {
-                if let Some(image_file) = &self.image_file_path {
-                    match std::fs::read(image_file.as_path()) {
-                        Ok(d) => Value::from(d).encoding(KnownEncoding::ImageJpeg.into()),
-                        Err(e) => {
-                            let text = RichText::new(e.to_string()).color(Color32::RED);
-                            self.info = Some(text);
-                            return;
-                        }
-                    }
-                } else {
-                    return;
-                }
-            }
-            KnownEncoding::ImagePng => {
-                if let Some(image_file) = &self.image_file_path {
-                    match std::fs::read(image_file.as_path()) {
-                        Ok(d) => Value::from(d).encoding(KnownEncoding::ImagePng.into()),
-                        Err(e) => {
-                            let text = RichText::new(e.to_string()).color(Color32::RED);
-                            self.info = Some(text);
-                            return;
-                        }
-                    }
-                } else {
-                    return;
-                }
-            }
-            KnownEncoding::ImageGif => {
-                return;
-            }
-            KnownEncoding::TextPlain => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextPlain.into())
-            }
-            KnownEncoding::AppSql => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppSql.into())
-            }
-            KnownEncoding::AppXml => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppXml.into())
-            }
-            KnownEncoding::AppXhtmlXml => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppXhtmlXml.into())
-            }
-            KnownEncoding::TextHtml => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextHtml.into())
-            }
-            KnownEncoding::TextXml => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextXml.into())
-            }
-            KnownEncoding::TextCss => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextCss.into())
-            }
-            KnownEncoding::TextCsv => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextCsv.into())
-            }
-            KnownEncoding::TextJavascript => {
-                Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJavascript.into())
             }
         };
+
         let put_data = PutData {
             id: self.id,
             key,
-            congestion_control: self.selected_congestion_control,
-            priority: self.selected_priority,
-            payload: value,
+            congestion_control: self.selected_congestion_control.into(),
+            priority: self.selected_priority.into(),
+            encoding: self.selected_encoding.to_encoding(),
+            payload,
         };
         events.push_back(Event::Put(Box::new(put_data)));
-        self.info = None;
+        self.error_info = None;
     }
 }
 
@@ -653,13 +825,13 @@ impl PagePut {
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        egui::SidePanel::left("page_put_panel_left")
+        SidePanel::left("page_put_panel_left")
             .resizable(true)
             .show(ctx, |ui| {
                 self.show_puts_name(ui);
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
@@ -755,7 +927,7 @@ impl PagePut {
     pub fn processing_put_res(&mut self, r: Box<(u64, bool, String)>) {
         let (id, b, s) = *r;
         if let Some(pd) = self.data_map.get_mut(&id) {
-            pd.info = if b {
+            pd.error_info = if b {
                 Some(RichText::new(s))
             } else {
                 Some(RichText::new(s).color(Color32::RED))

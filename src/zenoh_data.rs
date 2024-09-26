@@ -1,13 +1,13 @@
-use num_enum::FromPrimitive;
+use num_enum::{FromPrimitive, IntoPrimitive};
 use serde::{Deserialize, Serialize};
-use strum::AsRefStr;
-use zenoh::bytes::{ZBytes, ZDeserializeError};
+use strum::{AsRefStr, EnumIter};
+use zenoh::bytes::ZBytes;
 use zenoh::{
     bytes::Encoding,
     qos::{CongestionControl, Priority, Reliability},
 };
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, FromPrimitive)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, FromPrimitive, IntoPrimitive, EnumIter)]
 #[repr(u16)]
 pub enum KnownEncoding {
     ZBytes = 0,
@@ -84,6 +84,11 @@ impl KnownEncoding {
     pub fn from_encoding(encoding: &Encoding) -> KnownEncoding {
         let id: u16 = encoding.id();
         KnownEncoding::from(id)
+    }
+
+    pub fn to_encoding(&self) -> Encoding {
+        let id: u16 = self.into();
+        Encoding::new(id, None)
     }
 }
 
@@ -197,7 +202,7 @@ pub fn zenoh_value_abstract(encoding: &Encoding, data: &ZBytes) -> Result<String
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr)]
+#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr, EnumIter, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZCongestionControl {
@@ -223,7 +228,7 @@ impl Into<CongestionControl> for ZCongestionControl {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr)]
+#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr, EnumIter, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZPriority {
@@ -288,4 +293,8 @@ impl Into<Reliability> for ZReliability {
             ZReliability::BestEffort => Reliability::BestEffort,
         }
     }
+}
+
+pub fn parse_str_to_vec(s: &str) -> Result<Vec<u8>, String> {
+    todo!()
 }
