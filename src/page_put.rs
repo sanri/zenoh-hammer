@@ -1,8 +1,7 @@
-use eframe::egui::{CentralPanel, SidePanel, TextBuffer};
 use eframe::{
     egui::{
-        Color32, ColorImage, ComboBox, Context, Grid, Layout, RichText, ScrollArea, TextEdit,
-        TextStyle, TextureHandle, TextureOptions, Ui,
+        CentralPanel, Color32, ColorImage, ComboBox, Context, Grid, Layout, RichText, ScrollArea,
+        SidePanel, TextBuffer, TextEdit, TextStyle, TextureHandle, TextureOptions, Ui,
     },
     emath::Align,
 };
@@ -18,13 +17,9 @@ use std::{
     str::FromStr,
 };
 use strum::IntoEnumIterator;
-use zenoh::{
-    bytes::{Encoding, ZBytes},
-    key_expr::OwnedKeyExpr,
-};
+use zenoh::{bytes::ZBytes, key_expr::OwnedKeyExpr};
 
 use crate::{
-    app::ZenohValue,
     task_zenoh::PutData,
     zenoh_data::{parse_str_to_vec, KnownEncoding, ZCongestionControl, ZPriority},
 };
@@ -40,7 +35,9 @@ pub struct DataItem {
     congestion_control: ZCongestionControl,
     priority: ZPriority,
     encoding: u16,
-    payload: Option<String>,
+    encoding_schema: String,
+    payload: String,
+    image_file_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -60,7 +57,7 @@ pub struct PagePutData {
     image_file_dialog: Option<FileDialog>,
     image_file_path: Option<PathBuf>,
     image_texture: Option<TextureHandle>,
-    pub error_info: Option<RichText>,
+    error_info: Option<RichText>,
 }
 
 impl Default for PagePutData {
@@ -84,16 +81,21 @@ impl Default for PagePutData {
 
 impl PagePutData {
     fn from(data: &DataItem) -> PagePutData {
-        let (encoding, s) = data.value.to();
+        let image_file_path = match &data.image_file_path {
+            None => None,
+            Some(o) => PathBuf::from_str(o.as_str()).ok(),
+        };
+
         PagePutData {
             id: 0,
             name: data.name.clone(),
             input_key: data.key.clone(),
-            selected_congestion_control: data.congestion_control.into(),
-            selected_priority: data.priority.into(),
-            selected_encoding: encoding,
-            payload_edit_str: s,
-            image_file_path: None,
+            selected_congestion_control: data.congestion_control,
+            selected_priority: data.priority,
+            selected_encoding: KnownEncoding::from(data.encoding),
+            encoding_schema_edit_str: data.encoding_schema.clone(),
+            payload_edit_str: data.payload.clone(),
+            image_file_path,
             image_file_dialog: None,
             image_texture: None,
             error_info: None,
@@ -101,13 +103,15 @@ impl PagePutData {
     }
 
     fn to(&self) -> DataItem {
-        let value = ZenohValue::from(self.selected_encoding, self.payload_edit_str.clone());
         DataItem {
             name: self.name.clone(),
             key: self.input_key.clone(),
             congestion_control: self.selected_congestion_control.into(),
             priority: self.selected_priority.into(),
-            value,
+            encoding: self.selected_encoding.into(),
+            encoding_schema: self.encoding_schema_edit_str.clone(),
+            payload: self.payload_edit_str.clone(),
+            image_file_path: None,
         }
     }
 
@@ -119,8 +123,9 @@ impl PagePutData {
             selected_congestion_control: ppd.selected_congestion_control,
             selected_priority: ppd.selected_priority,
             selected_encoding: ppd.selected_encoding,
+            encoding_schema_edit_str: ppd.encoding_schema_edit_str.clone(),
             payload_edit_str: ppd.payload_edit_str.clone(),
-            image_file_path: None,
+            image_file_path: ppd.image_file_path.clone(),
             image_file_dialog: None,
             image_texture: None,
             error_info: None,

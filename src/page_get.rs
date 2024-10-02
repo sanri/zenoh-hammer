@@ -1,8 +1,3 @@
-use crate::{
-    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
-    hex_viewer::HexViewer,
-    task_zenoh::QueryData,
-};
 use arboard::Clipboard;
 use eframe::{
     egui,
@@ -19,101 +14,21 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use zenoh::query::{ConsolidationMode, Reply};
-use zenoh::query::{QueryConsolidation, QueryTarget};
-use zenoh::sample::Locality;
-use crate::task_zenoh::KnownEncoding;
+use strum::IntoEnumIterator;
+use zenoh::{
+    query::{ConsolidationMode, QueryConsolidation, QueryTarget, Reply},
+    sample::Locality,
+};
+
+use crate::{
+    hex_viewer::HexViewer,
+    task_zenoh::QueryData,
+    zenoh_data::{KnownEncoding, ZConsolidation, ZLocality, ZQueryTarget},
+};
 
 // query
 pub enum Event {
     Get(Box<QueryData>),
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZQueryTarget {
-    BestMatching,
-    All,
-    AllComplete,
-}
-
-impl From<QueryTarget> for ZQueryTarget {
-    fn from(value: QueryTarget) -> Self {
-        match value {
-            QueryTarget::BestMatching => ZQueryTarget::BestMatching,
-            QueryTarget::All => ZQueryTarget::All,
-            QueryTarget::AllComplete => ZQueryTarget::AllComplete,
-        }
-    }
-}
-
-impl Into<QueryTarget> for ZQueryTarget {
-    fn into(self) -> QueryTarget {
-        match self {
-            ZQueryTarget::BestMatching => QueryTarget::BestMatching,
-            ZQueryTarget::All => QueryTarget::All,
-            ZQueryTarget::AllComplete => QueryTarget::AllComplete,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZConsolidation {
-    Auto,
-    None,
-    Monotonic,
-    Latest,
-}
-
-impl From<QueryConsolidation> for ZConsolidation {
-    fn from(value: QueryConsolidation) -> Self {
-        match value.mode() {
-            ConsolidationMode::None => ZConsolidation::None,
-            ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
-            ConsolidationMode::Latest => ZConsolidation::Latest,
-            ConsolidationMode::Auto => ZConsolidation::Auto,
-        }
-    }
-}
-
-impl Into<QueryConsolidation> for ZConsolidation {
-    fn into(self) -> QueryConsolidation {
-        match self {
-            ZConsolidation::Auto => QueryConsolidation::AUTO,
-            ZConsolidation::None => QueryConsolidation::from(ConsolidationMode::None),
-            ZConsolidation::Monotonic => QueryConsolidation::from(ConsolidationMode::Monotonic),
-            ZConsolidation::Latest => QueryConsolidation::from(ConsolidationMode::Latest),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZLocality {
-    SessionLocal,
-    Remote,
-    Any,
-}
-
-impl From<Locality> for ZLocality {
-    fn from(value: Locality) -> Self {
-        match value {
-            Locality::SessionLocal => ZLocality::SessionLocal,
-            Locality::Remote => ZLocality::Remote,
-            Locality::Any => ZLocality::Any,
-        }
-    }
-}
-
-impl Into<Locality> for ZLocality {
-    fn into(self) -> Locality {
-        match self {
-            ZLocality::SessionLocal => Locality::SessionLocal,
-            ZLocality::Remote => Locality::Remote,
-            ZLocality::Any => Locality::Any,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -136,12 +51,13 @@ pub struct PageGetData {
     id: u64,
     name: String,
     input_key: String,
-    selected_target: QueryTarget,
-    selected_consolidation: QueryConsolidation,
-    selected_locality: Locality,
+    selected_target: ZQueryTarget,
+    selected_consolidation: ZConsolidation,
+    selected_locality: ZLocality,
     timeout: u64,
     edit_str: String,
     selected_encoding: KnownEncoding,
+    encoding_schema_edit_str: String,
     replies: Vec<Reply>,
     info: Option<RichText>,
 }
@@ -152,12 +68,13 @@ impl Default for PageGetData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/test".to_string(),
-            selected_target: QueryTarget::default(),
-            selected_consolidation: QueryConsolidation::default(),
-            selected_locality: Locality::default(),
+            selected_target: ZQueryTarget::BestMatching,
+            selected_consolidation: ZConsolidation::Auto,
+            selected_locality: ZLocality::Any,
             timeout: 10000,
             edit_str: String::new(),
-            selected_encoding: KnownEncoding::Empty,
+            selected_encoding: KnownEncoding::ZBool,
+            encoding_schema_edit_str: String::new(),
             replies: Vec::new(),
             info: None,
         }
@@ -271,19 +188,10 @@ impl PageGetData {
         let mut show_grid = |ui: &mut Ui| {
             ui.label("target: ");
             egui::ComboBox::new("query target", "")
-                .selected_text(format!("{:?}", self.selected_target))
+                .selected_text(self.selected_target.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [
-                        QueryTarget::BestMatching,
-                        QueryTarget::All,
-                        QueryTarget::AllComplete,
-                    ];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_target,
-                            option,
-                            format!("{:?}", option),
-                        );
+                    for option in ZQueryTarget::iter() {
+                        ui.selectable_value(&mut self.selected_target, option, option.as_ref());
                     }
                 });
             ui.end_row();

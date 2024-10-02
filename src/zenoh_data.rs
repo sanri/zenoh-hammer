@@ -1,10 +1,11 @@
 use num_enum::{FromPrimitive, IntoPrimitive};
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, EnumIter};
-use zenoh::bytes::ZBytes;
 use zenoh::{
-    bytes::Encoding,
+    bytes::{Encoding, ZBytes},
     qos::{CongestionControl, Priority, Reliability},
+    query::{ConsolidationMode, QueryConsolidation, QueryTarget},
+    sample::Locality,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, FromPrimitive, IntoPrimitive, EnumIter)]
@@ -269,7 +270,7 @@ impl Into<Priority> for ZPriority {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr)]
+#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr, EnumIter, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZReliability {
@@ -291,6 +292,96 @@ impl Into<Reliability> for ZReliability {
         match self {
             ZReliability::Reliable => Reliability::Reliable,
             ZReliability::BestEffort => Reliability::BestEffort,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, AsRefStr, EnumIter, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ZQueryTarget {
+    BestMatching,
+    All,
+    AllComplete,
+}
+
+impl From<QueryTarget> for ZQueryTarget {
+    fn from(value: QueryTarget) -> Self {
+        match value {
+            QueryTarget::BestMatching => ZQueryTarget::BestMatching,
+            QueryTarget::All => ZQueryTarget::All,
+            QueryTarget::AllComplete => ZQueryTarget::AllComplete,
+        }
+    }
+}
+
+impl Into<QueryTarget> for ZQueryTarget {
+    fn into(self) -> QueryTarget {
+        match self {
+            ZQueryTarget::BestMatching => QueryTarget::BestMatching,
+            ZQueryTarget::All => QueryTarget::All,
+            ZQueryTarget::AllComplete => QueryTarget::AllComplete,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ZConsolidation {
+    Auto,
+    None,
+    Monotonic,
+    Latest,
+}
+
+impl From<QueryConsolidation> for ZConsolidation {
+    fn from(value: QueryConsolidation) -> Self {
+        match value.mode() {
+            ConsolidationMode::None => ZConsolidation::None,
+            ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
+            ConsolidationMode::Latest => ZConsolidation::Latest,
+            ConsolidationMode::Auto => ZConsolidation::Auto,
+        }
+    }
+}
+
+impl Into<QueryConsolidation> for ZConsolidation {
+    fn into(self) -> QueryConsolidation {
+        match self {
+            ZConsolidation::Auto => QueryConsolidation::AUTO,
+            ZConsolidation::None => QueryConsolidation::from(ConsolidationMode::None),
+            ZConsolidation::Monotonic => QueryConsolidation::from(ConsolidationMode::Monotonic),
+            ZConsolidation::Latest => QueryConsolidation::from(ConsolidationMode::Latest),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ZLocality {
+    SessionLocal,
+    Remote,
+    Any,
+}
+
+impl From<Locality> for ZLocality {
+    fn from(value: Locality) -> Self {
+        match value {
+            Locality::SessionLocal => ZLocality::SessionLocal,
+            Locality::Remote => ZLocality::Remote,
+            Locality::Any => ZLocality::Any,
+        }
+    }
+}
+
+impl Into<Locality> for ZLocality {
+    fn into(self) -> Locality {
+        match self {
+            ZLocality::SessionLocal => Locality::SessionLocal,
+            ZLocality::Remote => Locality::Remote,
+            ZLocality::Any => Locality::Any,
         }
     }
 }
