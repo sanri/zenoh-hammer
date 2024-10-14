@@ -325,7 +325,7 @@ impl Into<QueryTarget> for ZQueryTarget {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq, AsRefStr)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZConsolidation {
@@ -357,7 +357,7 @@ impl Into<QueryConsolidation> for ZConsolidation {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq, AsRefStr)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZLocality {

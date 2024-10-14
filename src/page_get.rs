@@ -1,10 +1,7 @@
 use arboard::Clipboard;
-use eframe::{
-    egui,
-    egui::{
-        Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle,
-        Ui,
-    },
+use eframe::egui::{
+    Align, Color32, ComboBox, Context, DragValue, Grid, Id, Layout, RichText, ScrollArea, TextEdit,
+    TextStyle, Ui,
 };
 use egui_dnd::dnd;
 use egui_extras::{Column, TableBuilder};
@@ -15,10 +12,7 @@ use std::{
     time::Duration,
 };
 use strum::IntoEnumIterator;
-use zenoh::{
-    query::{ConsolidationMode, QueryConsolidation, QueryTarget, Reply},
-    sample::Locality,
-};
+use zenoh::query::Reply;
 
 use crate::{
     hex_viewer::HexViewer,
@@ -55,7 +49,7 @@ pub struct PageGetData {
     selected_consolidation: ZConsolidation,
     selected_locality: ZLocality,
     timeout: u64,
-    edit_str: String,
+    payload_edit_str: String,
     selected_encoding: KnownEncoding,
     encoding_schema_edit_str: String,
     replies: Vec<Reply>,
@@ -72,7 +66,7 @@ impl Default for PageGetData {
             selected_consolidation: ZConsolidation::Auto,
             selected_locality: ZLocality::Any,
             timeout: 10000,
-            edit_str: String::new(),
+            payload_edit_str: String::new(),
             selected_encoding: KnownEncoding::ZBool,
             encoding_schema_edit_str: String::new(),
             replies: Vec::new(),
@@ -92,15 +86,16 @@ impl PageGetData {
             selected_consolidation: data.consolidation.into(),
             selected_locality: data.locality.into(),
             timeout: data.timeout,
-            edit_str: s,
+            payload_edit_str: s,
             selected_encoding: encoding,
+            encoding_schema_edit_str: "".to_string(),
             replies: vec![],
             info: None,
         }
     }
 
     fn to(&self) -> DataItem {
-        let value = ZenohValue::from(self.selected_encoding, self.edit_str.clone());
+        let value = ZenohValue::from(self.selected_encoding, self.payload_edit_str.clone());
         DataItem {
             name: self.name.clone(),
             key: self.input_key.clone(),
@@ -121,8 +116,9 @@ impl PageGetData {
             selected_consolidation: pgd.selected_consolidation,
             selected_locality: pgd.selected_locality,
             timeout: pgd.timeout,
-            edit_str: pgd.edit_str.clone(),
+            payload_edit_str: pgd.payload_edit_str.clone(),
             selected_encoding: pgd.selected_encoding,
+            encoding_schema_edit_str: pgd.encoding_schema_edit_str.clone(),
             replies: Vec::new(),
             info: None,
         }
@@ -176,7 +172,7 @@ impl PageGetData {
                 .font(TextStyle::Monospace);
             ui.add(te);
         };
-        egui::Grid::new("input_grid")
+        Grid::new("input_grid")
             .num_columns(2)
             .striped(false)
             .show(ui, |ui| {
@@ -187,7 +183,7 @@ impl PageGetData {
     fn show_options(&mut self, ui: &mut Ui) {
         let mut show_grid = |ui: &mut Ui| {
             ui.label("target: ");
-            egui::ComboBox::new("query target", "")
+            ComboBox::new("query target", "")
                 .selected_text(self.selected_target.as_ref())
                 .show_ui(ui, |ui| {
                     for option in ZQueryTarget::iter() {
@@ -196,42 +192,26 @@ impl PageGetData {
                 });
             ui.end_row();
 
-            let dc = |c: QueryConsolidation| match c.mode() {
-                Mode::Auto => "Auto",
-                Mode::Manual(m) => match m {
-                    ConsolidationMode::None => "None",
-                    ConsolidationMode::Monotonic => "Monotonic",
-                    ConsolidationMode::Latest => "Latest",
-                },
-            };
-
             ui.label("consolidation: ");
-            egui::ComboBox::new("consolidation", "")
-                .selected_text(dc(self.selected_consolidation))
+            ComboBox::new("consolidation", "")
+                .selected_text(self.selected_consolidation.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [
-                        QueryConsolidation::AUTO,
-                        QueryConsolidation::from(ConsolidationMode::None),
-                        QueryConsolidation::from(ConsolidationMode::Monotonic),
-                        QueryConsolidation::from(ConsolidationMode::Latest),
-                    ];
-                    for option in options {
-                        ui.selectable_value(&mut self.selected_consolidation, option, dc(option));
+                    for option in ZConsolidation::iter() {
+                        ui.selectable_value(
+                            &mut self.selected_consolidation,
+                            option,
+                            option.as_ref(),
+                        );
                     }
                 });
             ui.end_row();
 
             ui.label("locality: ");
-            egui::ComboBox::new("locality", "")
-                .selected_text(format!("{:?}", self.selected_locality))
+            ComboBox::new("locality", "")
+                .selected_text(self.selected_locality.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [Locality::SessionLocal, Locality::Remote, Locality::Any];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_locality,
-                            option,
-                            format!("{:?}", option),
-                        );
+                    for option in ZLocality::iter() {
+                        ui.selectable_value(&mut self.selected_locality, option, option.as_ref());
                     }
                 });
             ui.end_row();
@@ -239,42 +219,26 @@ impl PageGetData {
             ui.label("timeout: ");
             let dv = DragValue::new(&mut self.timeout)
                 .speed(10.0)
-                .clamp_range(0..=10000);
+                .range(0..=10000);
             ui.add(dv);
             ui.end_row();
 
             ui.label("query payload: ");
-            egui::ComboBox::new("query payload", "")
-                .selected_text(format!("{}", Encoding::Exact(self.selected_encoding)))
+            ComboBox::new("query payload", "")
+                .selected_text(format!("{}", self.selected_encoding.to_encoding()))
                 .show_ui(ui, |ui| {
-                    let options = [
-                        KnownEncoding::Empty,
-                        KnownEncoding::TextPlain,
-                        KnownEncoding::TextJson,
-                        KnownEncoding::AppJson,
-                        KnownEncoding::AppInteger,
-                        KnownEncoding::AppFloat,
-                        KnownEncoding::AppSql,
-                        KnownEncoding::AppXml,
-                        KnownEncoding::AppXhtmlXml,
-                        KnownEncoding::TextHtml,
-                        KnownEncoding::TextXml,
-                        KnownEncoding::TextCss,
-                        KnownEncoding::TextCsv,
-                        KnownEncoding::TextJavascript,
-                    ];
-                    for option in options {
+                    for option in KnownEncoding::iter() {
                         ui.selectable_value(
                             &mut self.selected_encoding,
                             option,
-                            format!("{}", Encoding::Exact(option)),
+                            format!("{}", option.to_encoding()),
                         );
                     }
                 });
             ui.end_row();
         };
 
-        egui::Grid::new("options_grid")
+        Grid::new("options_grid")
             .num_columns(2)
             .striped(false)
             .show(ui, |ui| {
@@ -292,47 +256,47 @@ impl PageGetData {
         match self.selected_encoding {
             KnownEncoding::Empty => {}
             KnownEncoding::TextPlain => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppInteger => {
-                ui.add(TextEdit::singleline(&mut self.edit_str));
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
             }
             KnownEncoding::AppFloat => {
-                ui.add(TextEdit::singleline(&mut self.edit_str));
+                ui.add(TextEdit::singleline(&mut self.payload_edit_str));
             }
             KnownEncoding::TextJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppOctetStream => {}
             KnownEncoding::AppCustom => {}
             KnownEncoding::AppProperties => {}
             KnownEncoding::AppSql => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppXhtmlXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::AppXWwwFormUrlencoded => {}
             KnownEncoding::TextHtml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::TextXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::TextCss => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::TextCsv => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::TextJavascript => {
-                text_edit_multiline(&mut self.edit_str, ui);
+                text_edit_multiline(&mut self.payload_edit_str, ui);
             }
             KnownEncoding::ImageJpeg => {}
             KnownEncoding::ImagePng => {}
@@ -446,16 +410,19 @@ impl PageGetData {
         let v = match self.selected_encoding {
             KnownEncoding::Empty => None,
             KnownEncoding::AppJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
+                if let Err(e) =
+                    serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                {
                     let rt = RichText::new(format!("{}", e)).color(Color32::RED);
                     self.info = Some(rt);
                     return;
                 }
-                let v = Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppJson.into());
+                let v = Value::from(self.payload_edit_str.as_str())
+                    .encoding(KnownEncoding::AppJson.into());
                 Some(v)
             }
             KnownEncoding::AppInteger => {
-                let i: i64 = match self.edit_str.parse::<i64>() {
+                let i: i64 = match self.payload_edit_str.parse::<i64>() {
                     Ok(i) => i,
                     Err(e) => {
                         let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -466,7 +433,7 @@ impl PageGetData {
                 Some(Value::from(i))
             }
             KnownEncoding::AppFloat => {
-                let f: f64 = match self.edit_str.parse::<f64>() {
+                let f: f64 = match self.payload_edit_str.parse::<f64>() {
                     Ok(f) => f,
                     Err(e) => {
                         let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -477,13 +444,15 @@ impl PageGetData {
                 Some(Value::from(f))
             }
             KnownEncoding::TextJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
+                if let Err(e) =
+                    serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                {
                     let rt = RichText::new(format!("{}", e)).color(Color32::RED);
                     self.info = Some(rt);
                     return;
                 }
-                let v =
-                    Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJson.into());
+                let v = Value::from(self.payload_edit_str.as_str())
+                    .encoding(KnownEncoding::TextJson.into());
                 Some(v)
             }
             KnownEncoding::AppOctetStream => None,
@@ -494,7 +463,7 @@ impl PageGetData {
             KnownEncoding::ImagePng => None,
             KnownEncoding::ImageGif => None,
             str_encoding => {
-                let v = Value::from(self.edit_str.as_str()).encoding(str_encoding.into());
+                let v = Value::from(self.payload_edit_str.as_str()).encoding(str_encoding.into());
                 Some(v)
             }
         };

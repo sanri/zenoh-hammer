@@ -15,6 +15,7 @@ use zenoh::{
     bytes::{Encoding, ZBytes},
     sample::{Sample, SampleKind, SourceInfo},
 };
+use zenoh_ext::{z_deserialize, Deserialize, Serialize};
 
 use crate::{
     hex_viewer::HexViewer,
@@ -434,11 +435,11 @@ impl ViewerData {
         let known_encoding = KnownEncoding::from_encoding(encoding);
         match known_encoding {
             KnownEncoding::ZBytes => ViewerData::Bin,
-            KnownEncoding::ZInt8 => match data.deserialize::<i8>() {
+            KnownEncoding::ZInt8 => match z_deserialize::<i8>(data) {
                 Ok(i) => ViewerData::Simple(i.to_string()),
                 Err(e) => ViewerData::Error(e.to_string()),
             },
-            KnownEncoding::ZInt16 => match data.deserialize::<i16>() {
+            KnownEncoding::ZInt16 => match z_deserialize::<i16>(data) {
                 Ok(i) => ViewerData::Simple(i.to_string()),
                 Err(e) => ViewerData::Error(e.to_string()),
             },

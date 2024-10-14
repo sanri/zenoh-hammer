@@ -22,7 +22,8 @@ egui_extras = { version = "0.28" }
 egui_file = { version = "0.18" }
 egui_dnd = { version = "0.9" }
 egui_json_tree = { version = "0.6" }
-zenoh = { version = "1.0.0-beta.3", features = [ "default", "unstable", "internal" ] }
+zenoh = { version = "1.0.0-rc.1", features = [ "default", "unstable", "internal" ] }
+zenoh-ext = { version = "1.0.0-rc.1", features = [ "internal", "unstable" ] }
 tokio = { version = "1.40", default-features = false }
 tokio-util = { version = "0.7" }
 flume = { version = "0.11" }

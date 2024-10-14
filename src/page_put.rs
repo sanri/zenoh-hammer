@@ -231,8 +231,6 @@ impl PagePutData {
             KnownEncoding::AppJson => {
                 Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
             }
-            // KnownEncoding::AppInteger => {
-            // }
             KnownEncoding::TextJson => {
                 Self::text_edit_multiline(&mut self.payload_edit_str, &self.error_info, ui);
             }
@@ -680,14 +678,14 @@ impl PagePutData {
             }
             KnownEncoding::TextPlain => ZBytes::from(self.payload_edit_str.as_str()),
             KnownEncoding::AppJson => {
-                let v = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                let _ = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
                     .map_err(|e| e.to_string())?;
-                ZBytes::serialize(v)
+                ZBytes::from(self.payload_edit_str.as_str())
             }
             KnownEncoding::TextJson => {
-                let v = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
+                let _ = serde_json::from_str::<serde_json::Value>(self.payload_edit_str.as_str())
                     .map_err(|e| e.to_string())?;
-                ZBytes::serialize(v)
+                ZBytes::from(self.payload_edit_str.as_str())
             }
             KnownEncoding::AppCdr => return Err("Not supported yet".to_string()),
             KnownEncoding::AppCbor => return Err("Not supported yet".to_string()),
