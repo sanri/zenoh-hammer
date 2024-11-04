@@ -2,17 +2,21 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{fs, path::Path};
 
-use crate::{page_get, page_put, page_sub};
+use crate::{
+    page_get::ArchivePageGet, page_put::ArchivePagePut, page_session::ArchivePageSession,
+    page_sub::ArchivePageSub,
+};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct AppStoreData {
-    pub page_sub: page_sub::Data,
-    pub page_put: page_put::Data,
-    pub page_get: page_get::Data,
+pub struct ArchiveApp {
+    pub page_session: ArchivePageSession,
+    pub page_sub: ArchivePageSub,
+    pub page_put: ArchivePagePut,
+    pub page_get: ArchivePageGet,
 }
 
-impl AppStoreData {
-    pub fn load(path: &Path) -> Result<AppStoreData, String> {
+impl ArchiveApp {
+    pub fn load(path: &Path) -> Result<ArchiveApp, String> {
         let body = match fs::read(path) {
             Ok(o) => o,
             Err(e) => {
@@ -39,8 +43,8 @@ impl AppStoreData {
         }
     }
 
-    fn from_str(s: &str) -> Result<AppStoreData, String> {
-        match serde_json::from_str::<AppStoreData>(s) {
+    fn from_str(s: &str) -> Result<ArchiveApp, String> {
+        match serde_json::from_str::<ArchiveApp>(s) {
             Ok(o) => Ok(o),
             Err(e) => Err(e.to_string()),
         }
@@ -54,7 +58,7 @@ impl AppStoreData {
 
 #[test]
 fn app_file_to_string() {
-    let app_file = AppStoreData::default();
+    let app_file = ArchiveApp::default();
     let s = app_file.to_string();
     println!("{}", s);
 }
@@ -64,7 +68,7 @@ fn app_file_write() {
     use std::path::PathBuf;
     use std::str::FromStr;
 
-    let app_file = AppStoreData::default();
+    let app_file = ArchiveApp::default();
     match app_file.write(PathBuf::from_str("target/app_file.json").unwrap().as_path()) {
         Ok(_) => {
             println!("write ok");

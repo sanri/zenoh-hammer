@@ -1,38 +1,42 @@
 use eframe::{
-    egui,
-    egui::{Color32, Context, Id, Layout, RichText, Ui},
+    egui::{
+        global_theme_preference_switch, special_emojis::GITHUB, Button, Context, Grid, Id, Layout,
+        RichText, TopBottomPanel, Ui, Window,
+    },
     emath::Align,
     Frame,
 };
 use egui_file::{DialogType, FileDialog};
 use flume::{unbounded, TryRecvError};
-use include_cargo_toml::include_toml;
-use serde::{Deserialize, Serialize};
+use log::{info, warn};
+use static_toml::static_toml;
 use std::{path::PathBuf, time::Duration};
-use strum::IntoEnumIterator;
-use strum_macros::{AsRefStr, EnumIter};
-use zenoh::{
-    prelude::{Buffer, KnownEncoding},
-    value::Value,
-};
+use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
-    file::AppStoreData,
+    archive_file::ArchiveApp,
     page_get::PageGet,
     page_put::PagePut,
     page_session,
     page_session::PageSession,
     page_sub,
     page_sub::PageSub,
-    zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
+    task_zenoh::{start_async, MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
 };
+
+static_toml! {
+    static CARGO_INFO = include_toml!("Cargo.toml");
+}
+
+static ZENOH_HAMMER: &'static str = CARGO_INFO.package.version;
+static ZENOH_VERSION: &'static str = CARGO_INFO.dependencies.zenoh.version;
+static EGUI_VERSION: &'static str = CARGO_INFO.dependencies.eframe.version;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, AsRefStr, EnumIter)]
 pub enum Page {
     Session,
     Sub,
     Get,
-    // Pub,
     Put,
 }
 
@@ -80,7 +84,7 @@ impl eframe::App for HammerApp {
 
 impl HammerApp {
     fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+        TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 self.show_bar_contents(ui);
             });
@@ -110,7 +114,14 @@ impl HammerApp {
                     DialogType::OpenFile => {
                         if let Some(file) = dialog.path() {
                             let file = file.to_path_buf();
-                            self.load_from_file(file);
+                            match self.load_from_file(file) {
+                                Ok(o) => {
+                                    info!("{}", o);
+                                }
+                                Err(e) => {
+                                    warn!("{}", e);
+                                }
+                            }
                         }
                     }
                     DialogType::SaveFile => {
@@ -126,12 +137,12 @@ impl HammerApp {
         show_about_window(ctx, &mut self.show_about);
     }
 
-    fn show_bar_contents(&mut self, ui: &mut egui::Ui) {
+    fn show_bar_contents(&mut self, ui: &mut Ui) {
         ui.menu_button("file", |ui| {
             ui.set_min_width(80.0);
 
-            if ui.add(egui::Button::new("load..")).clicked() {
-                if self.p_session.connected {
+            if ui.add(Button::new("load..")).clicked() {
+                if self.p_session.connected() {
                     return;
                 }
 
@@ -143,7 +154,7 @@ impl HammerApp {
                 ui.close_menu();
             }
 
-            if ui.add(egui::Button::new("save")).clicked() {
+            if ui.add(Button::new("save")).clicked() {
                 if let Some(p) = self.opened_file.clone() {
                     self.store_to_file(p);
                 } else {
@@ -156,7 +167,7 @@ impl HammerApp {
                 ui.close_menu();
             }
 
-            if ui.add(egui::Button::new("save as ..")).clicked() {
+            if ui.add(Button::new("save as ..")).clicked() {
                 let mut dialog = FileDialog::save_file(self.opened_file.clone())
                     .show_new_folder(true)
                     .show_rename(true);
@@ -169,9 +180,10 @@ impl HammerApp {
 
         ui.menu_button("help", |ui| {
             ui.set_min_width(80.0);
-            ui.style_mut().wrap = Some(false);
+            // ui.style_mut().wrap = Some(false);
+            // ui.style_mut().wrap_mode = Some();
 
-            if ui.add(egui::Button::new("about")).clicked() {
+            if ui.add(Button::new("about")).clicked() {
                 self.show_about = true;
                 ui.close_menu();
             }
@@ -207,51 +219,60 @@ impl HammerApp {
         ui.separator();
 
         if let Some(file_path) = &self.opened_file {
-            ui.label(format!("file: {}", file_path.to_str().unwrap()));
+            ui.label(format!("{}", file_path.to_str().unwrap()));
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            egui::widgets::global_dark_light_mode_switch(ui);
+            global_theme_preference_switch(ui)
         });
     }
 
-    fn load_from_file(&mut self, path: PathBuf) {
-        match AppStoreData::load(path.as_path()) {
+    fn load_from_file(&mut self, path: PathBuf) -> Result<String, String> {
+        match ArchiveApp::load(path.as_path()) {
             Ok(o) => {
-                self.load(o);
-                println!("load file ok, path: {}", path.to_str().unwrap());
+                let s = format!("load file ok, path: {}", path.to_str().unwrap_or_default());
+                self.load(o)?;
                 self.opened_file = Some(path);
+                Ok(s)
             }
             Err(e) => {
-                println!("load file err, path: {} \n{}", path.to_str().unwrap(), e);
+                let s = format!(
+                    "load file err, path: {} \n{}",
+                    path.to_str().unwrap_or_default(),
+                    e
+                );
+                Err(s)
             }
         }
     }
 
     fn store_to_file(&mut self, path: PathBuf) {
-        let asd = self.create_store_data();
+        let asd = self.generate_archive();
         match asd.write(path.as_path()) {
             Ok(_) => {
-                println!("save file: {}", path.to_str().unwrap());
+                info!("save file: {}", path.to_str().unwrap());
                 self.opened_file = Some(path);
             }
             Err(e) => {
-                println!("save file err, path: {} \n{}", path.to_str().unwrap(), e);
+                warn!("save file err, path: {} \n{}", path.to_str().unwrap(), e);
             }
         }
     }
 
-    fn load(&mut self, data: AppStoreData) {
-        self.p_sub.load(data.page_sub);
-        self.p_put.load(data.page_put);
-        self.p_get.load(data.page_get);
+    fn load(&mut self, data: ArchiveApp) -> Result<(), String> {
+        self.p_session.load(data.page_session)?;
+        self.p_sub.load(data.page_sub)?;
+        self.p_put.load(data.page_put)?;
+        self.p_get.load(data.page_get)?;
+        Ok(())
     }
 
-    fn create_store_data(&self) -> AppStoreData {
-        AppStoreData {
-            page_sub: self.p_sub.create_store_data(),
-            page_put: self.p_put.create_store_data(),
-            page_get: self.p_get.create_store_data(),
+    fn generate_archive(&self) -> ArchiveApp {
+        ArchiveApp {
+            page_session: (&self.p_session).into(),
+            page_sub: (&self.p_sub).into(),
+            page_put: (&self.p_put).into(),
+            page_get: (&self.p_get).into(),
         }
     }
 
@@ -273,18 +294,17 @@ impl HammerApp {
                     }
                     TryRecvError::Disconnected => {
                         self.receiver_from_zenoh = None;
-                        self.p_session.connected = false;
+                        self.p_session.set_connected(None);
                         return;
                     }
                 },
             };
             match msg {
                 MsgZenohToGui::OpenSession(b) => {
-                    self.p_session.connected = b;
-                    if b == false {
+                    if b.is_err() {
                         self.sender_to_zenoh = None;
-                        return;
                     }
+                    self.p_session.set_connect_result(b);
                 }
                 MsgZenohToGui::AddSubRes(res) => {
                     let (id, r) = *res;
@@ -294,8 +314,8 @@ impl HammerApp {
                     self.p_sub.processing_del_sub_res(id);
                 }
                 MsgZenohToGui::SubCB(d) => {
-                    let (id, sample) = *d;
-                    self.p_sub.processing_sub_cb(id, sample);
+                    let (id, sample, receipt_time) = *d;
+                    self.p_sub.processing_sub_cb(id, sample, receipt_time);
                 }
                 MsgZenohToGui::GetRes(r) => {
                     self.p_get.processing_get_res(r);
@@ -312,6 +332,7 @@ impl HammerApp {
         while let Some(event) = self.p_session.events.pop_front() {
             match event {
                 Event::Connect(c) => {
+                    let (id, config_file_path) = *c;
                     if self.sender_to_zenoh.is_none() {
                         let (sender_to_gui, receiver_from_zenoh): (
                             Sender<MsgZenohToGui>,
@@ -322,7 +343,7 @@ impl HammerApp {
                             Receiver<MsgGuiToZenoh>,
                         ) = unbounded();
 
-                        crate::zenoh::start_async(sender_to_gui, receiver_from_gui, *c);
+                        start_async(sender_to_gui, receiver_from_gui, id, config_file_path);
 
                         self.sender_to_zenoh = Some(sender_to_zenoh);
                         self.receiver_from_zenoh = Some(receiver_from_zenoh);
@@ -384,200 +405,52 @@ impl HammerApp {
     }
 }
 
-pub fn value_create_rich_text(d: &Value) -> Option<RichText> {
-    match d.encoding.prefix() {
-        KnownEncoding::AppOctetStream => Some(RichText::new("...")),
-        KnownEncoding::TextPlain => Some(text_plant_create_rich_text(d)),
-        KnownEncoding::AppJson => Some(json_create_rich_text(d)),
-        KnownEncoding::AppInteger => Some(i64_create_rich_text(d)),
-        KnownEncoding::AppFloat => Some(f64_create_rich_text(d)),
-        KnownEncoding::TextJson => Some(json_create_rich_text(d)),
-        KnownEncoding::Empty => None,
-        KnownEncoding::AppCustom => Some(RichText::new("...")),
-        KnownEncoding::AppProperties => None,
-        KnownEncoding::AppSql => Some(RichText::new("...")),
-        KnownEncoding::AppXml => Some(RichText::new("...")),
-        KnownEncoding::AppXhtmlXml => Some(RichText::new("...")),
-        KnownEncoding::AppXWwwFormUrlencoded => None,
-        KnownEncoding::TextHtml => Some(RichText::new("...")),
-        KnownEncoding::TextXml => Some(RichText::new("...")),
-        KnownEncoding::TextCss => Some(RichText::new("...")),
-        KnownEncoding::TextCsv => Some(RichText::new("...")),
-        KnownEncoding::TextJavascript => Some(RichText::new("...")),
-        KnownEncoding::ImageJpeg => Some(RichText::new("◪")),
-        KnownEncoding::ImagePng => Some(RichText::new("◪")),
-        KnownEncoding::ImageGif => None,
-    }
-}
-
-pub fn i64_create_rich_text(d: &Value) -> RichText {
-    let text: RichText = match i64::try_from(d) {
-        Ok(o) => RichText::new(format!("{}", o)).monospace(),
-        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-    };
-    text
-}
-
-pub fn f64_create_rich_text(d: &Value) -> RichText {
-    let text: RichText = match f64::try_from(d) {
-        Ok(o) => RichText::new(format!("{}", o)).monospace(),
-        Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-    };
-    text
-}
-
-pub fn text_plant_create_rich_text(d: &Value) -> RichText {
-    let text: RichText = if d.payload.len() < 30 {
-        match String::try_from(d) {
-            Ok(o) => RichText::new(o).monospace(),
-            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-        }
-    } else {
-        RichText::new("...")
-    };
-    text
-}
-
-pub fn json_create_rich_text(d: &Value) -> RichText {
-    let text: RichText = if d.payload.len() < 30 {
-        match serde_json::Value::try_from(d) {
-            Ok(o) => RichText::new(format!("{}", o)).monospace(),
-            Err(_) => RichText::new("type err!").monospace().color(Color32::RED),
-        }
-    } else {
-        RichText::new("...")
-    };
-    text
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type", content = "data")]
-pub enum ZenohValue {
-    Empty,
-    TextPlain(String),
-    TextJson(String),
-    AppJson(String),
-    AppInteger(i64),
-    AppFloat(f64),
-}
-
-impl ZenohValue {
-    pub fn to(&self) -> (KnownEncoding, String) {
-        match self {
-            ZenohValue::Empty => (KnownEncoding::Empty, String::new()),
-            ZenohValue::TextPlain(v) => (KnownEncoding::TextPlain, v.clone()),
-            ZenohValue::TextJson(v) => (KnownEncoding::TextJson, v.clone()),
-            ZenohValue::AppJson(v) => (KnownEncoding::AppJson, v.clone()),
-            ZenohValue::AppInteger(v) => (KnownEncoding::AppInteger, v.to_string()),
-            ZenohValue::AppFloat(v) => (KnownEncoding::AppFloat, v.to_string()),
-        }
-    }
-
-    pub fn from(encoding: KnownEncoding, s: String) -> Self {
-        match encoding {
-            KnownEncoding::Empty => ZenohValue::Empty,
-            KnownEncoding::TextPlain => ZenohValue::TextPlain(s),
-            KnownEncoding::AppJson => ZenohValue::AppJson(s),
-            KnownEncoding::AppInteger => {
-                if let Ok(i) = s.parse::<i64>() {
-                    ZenohValue::AppInteger(i)
-                } else {
-                    ZenohValue::Empty
-                }
-            }
-            KnownEncoding::AppFloat => {
-                if let Ok(i) = s.parse::<f64>() {
-                    ZenohValue::AppFloat(i)
-                } else {
-                    ZenohValue::Empty
-                }
-            }
-            KnownEncoding::TextJson => ZenohValue::TextJson(s),
-            _ => ZenohValue::Empty,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct TestData {
-    zv: ZenohValue,
-}
-
-#[test]
-fn test_zenoh_value_serialize() {
-    use serde_json;
-    let td = TestData {
-        zv: ZenohValue::Empty,
-    };
-    let json_str = serde_json::to_string(&td).unwrap();
-    println!("{}", json_str);
-
-    let td = TestData {
-        zv: ZenohValue::TextJson(r#"{"a":1}"#.to_string()),
-    };
-    let json_str = serde_json::to_string(&td).unwrap();
-    println!("{}", json_str);
-
-    let td = TestData {
-        zv: ZenohValue::AppFloat(21.0),
-    };
-    let json_str = serde_json::to_string(&td).unwrap();
-    println!("{}", json_str);
-}
-
-#[test]
-fn test_zenoh_value_deserialize() {
-    let json_str = r#"{"zv":{"type":"TextJson","data":"{\"a\": 1}"}}"#;
-    let td: TestData = serde_json::from_str(json_str).unwrap();
-    if let ZenohValue::TextJson(s) = td.zv {
-        println!("{}", s);
-    }
-}
-
 fn show_about_window(ctx: &Context, is_open: &mut bool) {
-    let window = egui::Window::new("About")
+    let window = Window::new("About")
         .id(Id::new("show about window"))
         .collapsible(false)
-        .scroll2([false, false])
+        .scroll([false, false])
         .open(is_open)
         .resizable(false)
         .default_width(240.0);
 
     window.show(ctx, |ui| {
-        use egui::special_emojis::GITHUB;
-
         let show_grid = |ui: &mut Ui| {
-            ui.label(RichText::new(format!("{:>13}", "Hammer:")).monospace());
-            let version = format!("v{}", include_toml!("package"."version"));
+            ui.hyperlink_to(
+                format!("{} Zenoh Hammer", GITHUB),
+                "https://github.com/sanri/zenoh-hammer",
+            );
+            let version = format!("v{}", ZENOH_HAMMER);
             ui.label(RichText::new(version).monospace());
             ui.end_row();
 
-            ui.label(RichText::new(format!("{:>13}", "Zenoh:")).monospace());
-            let version = format!("v{}", include_toml!("dependencies"."zenoh"."version"));
+            ui.hyperlink_to(
+                format!("{} Zenoh", GITHUB),
+                "https://github.com/eclipse-zenoh/zenoh",
+            );
+            let version = format!("v{}", ZENOH_VERSION);
+            ui.label(RichText::new(version).monospace());
+            ui.end_row();
+
+            ui.hyperlink_to(format!("{} egui", GITHUB), "https://github.com/emilk/egui");
+            let version = format!("v{}", EGUI_VERSION);
             ui.label(RichText::new(version).monospace());
             ui.end_row();
         };
 
         ui.with_layout(Layout::top_down(Align::Center), |ui| {
-            ui.label(RichText::new("Zenoh UI tool.").size(16.0));
+            ui.label(RichText::new("Zenoh Hammer").size(16.0));
 
             ui.add_space(10.0);
-            egui::Grid::new("options_grid")
-                .num_columns(2)
-                .striped(false)
-                .show(ui, |ui| {
-                    show_grid(ui);
-                });
-
-            ui.add_space(10.0);
-            ui.hyperlink_to(
-                format!("{} Zenoh-hammer on GitHub", GITHUB),
-                "https://github.com/sanri/zenoh-hammer",
-            );
-            ui.hyperlink_to(
-                format!("{} Zenoh on GitHub", GITHUB),
-                "https://github.com/eclipse-zenoh/zenoh",
-            );
+            ui.horizontal(|ui| {
+                ui.add_space(40.0);
+                Grid::new("options_grid")
+                    .num_columns(2)
+                    .striped(false)
+                    .show(ui, |ui| {
+                        show_grid(ui);
+                    });
+            });
         });
     });
 }
