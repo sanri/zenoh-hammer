@@ -1,0 +1,35 @@
+name: BuildCheck
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ubuntu:
+    runs-on: [ubuntu-22.04, ubuntu-24.04]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo check
+
+  windows:
+    runs-on: [windows-2019, windows-2022]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo check
+
+  macos:
+    runs-on: [macos-13, macos-14]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo check

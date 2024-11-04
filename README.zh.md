@@ -8,20 +8,21 @@ Zenoh的图形界面工具.
 
 ## 示例
 
-<img src="media/example.gif">
+![](media/example1.png)
+![](media/example2.png)
+![](media/example3.png)
+![](media/example4.png)
+![](media/example5.png)
 
 
 ## 功能
-- [x] 支持发送、接收、查看文本类型数据
-- [x] 支持发送、接收、查看png、jpeg格式图片数据
-- [x] 可用十六进制查看器查看消息内容(目前只能查看消息的前5KB数据)
-    - [ ] 十六进制查看器支持查看100MB内的数据
-- [x] 可将软件界面内的配置数据保存为文件
-- [x] 统计收到的订阅数据的频率
-- [x] 支持中文、英文
-    - [ ] 界面显示语言支持运行时切换 
-- [ ] 可加载zenoh通信配置文件 
-
+- 支持 Zenoh V1.0
+- 发送、接收、查看多种类型数据
+  - 文本类型数据
+  - 二进制数据
+  - png、jpeg、bmp、gif、webp格式图片数据
+- 可用十六进制查看器查看消息内容
+- 可将软件界面内的配置数据保存为文件
 
 ## 编译
 
@@ -29,4 +30,9 @@ Zenoh的图形界面工具.
 
 ```shell
 cargo build --release
+```
+
+或者 
+```shell
+cargo build --profile release-lto
 ```

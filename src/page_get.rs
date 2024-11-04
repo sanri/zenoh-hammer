@@ -181,7 +181,7 @@ impl PageGetData {
                     self.send(events);
                 }
                 TextEdit::singleline(&mut self.name)
-                    .desired_width(600.0)
+                    .desired_width(3000.0)
                     .font(TextStyle::Monospace)
                     .ui(ui);
             });
