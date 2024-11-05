@@ -11,7 +11,7 @@ env:
 
 jobs:
   ubuntu:
-    runs-on: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v3
@@ -19,7 +19,7 @@ jobs:
       run: cargo build --verbose  --profile release-lto
 
   windows:
-    runs-on: [windows-2019, windows-2022]
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v3
@@ -27,7 +27,7 @@ jobs:
       run: cargo build --verbose  --profile release-lto
 
   macos:
-    runs-on: [macos-13, macos-14]
+    runs-on: macos-12
 
     steps:
     - uses: actions/checkout@v3
