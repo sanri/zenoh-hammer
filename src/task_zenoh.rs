@@ -1,34 +1,45 @@
-use async_std::task;
-use flume::{unbounded, TryRecvError};
-use futures::select;
-use std::{collections::BTreeMap, sync::Arc, thread, time::Duration};
-
+use flume::{unbounded, RecvError, TryRecvError};
+use log::{error, info, warn};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    thread,
+    time::{Duration, SystemTime},
+};
+use tokio::{runtime::Runtime, select, task, time::sleep};
 use zenoh::{
-    prelude::{r#async::*, Config, Sample, Session},
-    query::Reply,
-    subscriber::Subscriber,
-    time::new_reception_timestamp,
+    bytes::{Encoding, ZBytes},
+    handlers::FifoChannelHandler,
+    internal::Value,
+    key_expr::OwnedKeyExpr,
+    pubsub::Subscriber,
+    qos::{CongestionControl, Priority},
+    query::{QueryConsolidation, QueryTarget, Reply},
+    sample::{Locality, Sample},
+    Config, Session,
 };
 
-pub(crate) type Sender<T> = flume::Sender<T>;
-pub(crate) type Receiver<T> = flume::Receiver<T>;
+pub type Sender<T> = flume::Sender<T>;
+pub type Receiver<T> = flume::Receiver<T>;
 
 pub struct PutData {
-    pub(crate) id: u64,
-    pub(crate) key: OwnedKeyExpr,
-    pub(crate) congestion_control: CongestionControl,
-    pub(crate) priority: Priority,
-    pub(crate) value: Value,
+    pub id: u64,
+    pub key: OwnedKeyExpr,
+    pub congestion_control: CongestionControl,
+    pub priority: Priority,
+    pub encoding: Encoding,
+    pub payload: ZBytes,
 }
 
 pub struct QueryData {
-    pub(crate) id: u64,
-    pub(crate) key_expr: OwnedKeyExpr,
-    pub(crate) target: QueryTarget,
-    pub(crate) consolidation: QueryConsolidation,
-    pub(crate) locality: Locality,
-    pub(crate) timeout: Duration,
-    pub(crate) value: Option<Value>,
+    pub id: u64,
+    pub key_expr: OwnedKeyExpr,
+    pub attachment: Option<ZBytes>,
+    pub target: QueryTarget,
+    pub consolidation: QueryConsolidation,
+    pub locality: Locality,
+    pub timeout: Duration,
+    pub value: Option<Value>,
 }
 
 pub enum MsgGuiToZenoh {
@@ -40,38 +51,60 @@ pub enum MsgGuiToZenoh {
 }
 
 pub enum MsgZenohToGui {
-    OpenSession(bool),                         // true 表示成功， false 表示失败
+    OpenSession(Result<u64, (u64, String)>), // Ok表示成功， Err表示失败
     AddSubRes(Box<(u64, Result<(), String>)>), // sub id, true 表示成功, false表示失败
-    DelSubRes(u64),                            // sub id
-    SubCB(Box<(u64, Sample)>),                 // (sub id, value)
-    GetRes(Box<(u64, Reply)>),                 // (get id, result)
-    PutRes(Box<(u64, bool, String)>),          // true 表示成功， false表示失败
+    DelSubRes(u64),                          // sub id
+    SubCB(Box<(u64, Sample, SystemTime)>),   // (sub id, value, timestamp)
+    GetRes(Box<(u64, Reply)>),               // (get id, result, timestamp)
+    PutRes(Box<(u64, bool, String)>),        // true 表示成功， false表示失败
 }
 
 pub fn start_async(
     sender_to_gui: Sender<MsgZenohToGui>,
     receiver_from_gui: Receiver<MsgGuiToZenoh>,
-    config: Config,
+    id: u64,
+    config_file_path: PathBuf,
 ) {
     thread::spawn(move || {
-        task::block_on(loop_zenoh(sender_to_gui, receiver_from_gui, config));
+        let rt = Runtime::new().unwrap();
+        rt.block_on(loop_zenoh(
+            sender_to_gui,
+            receiver_from_gui,
+            config_file_path,
+            id,
+        ));
     });
 }
 
 async fn loop_zenoh(
     sender_to_gui: Sender<MsgZenohToGui>,
     receiver_from_gui: Receiver<MsgGuiToZenoh>,
-    config: Config,
+    config_file_path: PathBuf,
+    id: u64,
 ) {
-    let session: Arc<Session> = match zenoh::open(config).res().await {
-        Ok(s) => Arc::new(s),
+    let config = match Config::from_file(config_file_path) {
+        Ok(o) => o,
         Err(e) => {
-            println!("{}", e);
-            let _ = sender_to_gui.send(MsgZenohToGui::OpenSession(false));
+            let s = e.to_string();
+            warn!("{s}");
+            let _ = sender_to_gui.send(MsgZenohToGui::OpenSession(Err((id, s))));
             return;
         }
     };
-    let _ = sender_to_gui.send(MsgZenohToGui::OpenSession(true));
+
+    let session: Session = match zenoh::open(config).await {
+        Ok(o) => {
+            info!("session open ok");
+            o
+        }
+        Err(e) => {
+            let s = e.to_string();
+            warn!("{s}");
+            let _ = sender_to_gui.send(MsgZenohToGui::OpenSession(Err((id, s))));
+            return;
+        }
+    };
+    let _ = sender_to_gui.send(MsgZenohToGui::OpenSession(Ok(id)));
 
     let mut subscriber_senders: BTreeMap<u64, Sender<()>> = BTreeMap::new();
 
@@ -82,7 +115,7 @@ async fn loop_zenoh(
             Err(e) => {
                 match e {
                     TryRecvError::Empty => {
-                        task::sleep(Duration::from_millis(8)).await;
+                        sleep(Duration::from_millis(8)).await;
                         continue 'a;
                     }
                     TryRecvError::Disconnected => {
@@ -97,8 +130,8 @@ async fn loop_zenoh(
             }
             MsgGuiToZenoh::AddSubReq(req) => {
                 let (id, key_expr) = *req;
-                let subscriber: Subscriber<Receiver<Sample>> =
-                    match session.declare_subscriber(key_expr).res().await {
+                let subscriber: Subscriber<FifoChannelHandler<Sample>> =
+                    match session.declare_subscriber(key_expr).await {
                         Ok(o) => o,
                         Err(e) => {
                             let _ = sender_to_gui
@@ -129,87 +162,91 @@ async fn loop_zenoh(
             MsgGuiToZenoh::PutReq(p) => {
                 let pd = *p;
                 if let Err(e) = session
-                    .put(pd.key.clone(), pd.value)
+                    .put(pd.key.clone(), pd.payload)
+                    .encoding(pd.encoding)
                     .congestion_control(pd.congestion_control)
                     .priority(pd.priority)
-                    .res()
                     .await
                 {
-                    let s = format!("{}", e);
+                    let s = format!("put error \"{}\", {}", pd.key, e);
+                    warn!("{s}");
                     let _ = sender_to_gui.send(MsgZenohToGui::PutRes(Box::new((pd.id, false, s))));
                 } else {
-                    let s = format!("{} put succeed", pd.key);
+                    let s = format!("put ok \"{}\"", pd.key);
+                    info!("{s}");
                     let _ = sender_to_gui.send(MsgZenohToGui::PutRes(Box::new((pd.id, true, s))));
                 }
             }
         }
-    } // loop 'a
+    }
 
     for (sub_id, sender) in subscriber_senders {
         let _ = sender.send(());
         let _ = sender_to_gui.send(MsgZenohToGui::DelSubRes(sub_id));
     }
+
+    info!("session closed");
 }
 
 async fn task_subscriber(
     id: u64,
-    subscriber: Subscriber<'_, Receiver<Sample>>,
+    subscriber: Subscriber<FifoChannelHandler<Sample>>,
     close_receiver: Receiver<()>,
     sender_to_gui: Sender<MsgZenohToGui>,
 ) {
-    println!("task_subscriber entry");
+    info!("task_subscriber entry");
     'a: loop {
-        select!(
+        let r: Result<Sample, RecvError> = select!(
             sample = subscriber.recv_async() =>{
-                if let Ok(mut sample) = sample{
-                    if sample.timestamp.is_none(){
-                        sample.timestamp = Some(new_reception_timestamp());
-                    }
-                    let msg = MsgZenohToGui::SubCB(Box::new((id, sample)));
-                    if let Err(e) = sender_to_gui.send(msg) {
-                        println!("{}", e);
-                    }
-                }
+                 sample.map_err(|_|RecvError::Disconnected)
             },
 
             _ = close_receiver.recv_async() =>{
-                    break 'a;
+                 Err(RecvError::Disconnected)
             },
         );
+
+        match r {
+            Ok(sample) => {
+                let t = SystemTime::now();
+                let msg = MsgZenohToGui::SubCB(Box::new((id, sample, t)));
+                if let Err(e) = sender_to_gui.send(msg) {
+                    println!("{}", e);
+                }
+            }
+            Err(_) => {
+                break 'a;
+            }
+        }
     }
-    println!("task_subscriber exit");
+    info!("task_subscriber exit");
 }
 
-async fn task_query(
-    session: Arc<Session>,
-    data: Box<QueryData>,
-    sender_to_gui: Sender<MsgZenohToGui>,
-) {
-    println!("task_query entry");
+async fn task_query(session: Session, data: Box<QueryData>, sender_to_gui: Sender<MsgZenohToGui>) {
     let d = *data;
+    let key_expr_str = d.key_expr.to_string();
+    info!("task_query entry, key expr \"{}\"", key_expr_str);
     let replies = match d.value {
-        Some(v) => session.get(d.key_expr).with_value(v),
+        Some(v) => session
+            .get(d.key_expr)
+            .payload(v.payload)
+            .encoding(v.encoding),
         None => session.get(d.key_expr),
     }
+    .attachment(d.attachment)
     .target(d.target)
     .timeout(d.timeout)
     .consolidation(d.consolidation)
     .allowed_destination(d.locality)
-    .res()
     .await
     .unwrap();
 
-    while let Ok(mut reply) = replies.recv_async().await {
-        if let Ok(sample) = &mut reply.sample {
-            if sample.timestamp.is_none() {
-                sample.timestamp = Some(new_reception_timestamp());
-            }
-        }
+    while let Ok(reply) = replies.recv_async().await {
         let msg = MsgZenohToGui::GetRes(Box::new((d.id, reply)));
         if let Err(e) = sender_to_gui.send(msg) {
-            println!("{}", e);
+            error!("{}", e);
         }
     }
 
-    println!("task_query exit");
+    info!("task_query exit, key expr {}", key_expr_str);
 }

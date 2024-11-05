@@ -1,32 +1,23 @@
-use arboard::Clipboard;
-use eframe::{
-    egui,
-    egui::{
-        Align, Color32, Context, DragValue, Id, Layout, RichText, ScrollArea, TextEdit, TextStyle,
-        Ui,
-    },
+use eframe::egui::{
+    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, DragValue, Grid, Id, Layout,
+    RichText, ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Widget, Window,
 };
 use egui_dnd::dnd;
-use egui_extras::{Column, TableBuilder};
+use egui_extras::{Column, TableBody, TableBuilder, TableRow};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     str::FromStr,
     time::Duration,
 };
-use zenoh::{
-    buffers::reader::{HasReader, Reader},
-    prelude::{
-        Buffer, Encoding, KnownEncoding, Locality, OwnedKeyExpr, QueryConsolidation, QueryTarget,
-        Sample, Value, ZenohId,
-    },
-    query::{ConsolidationMode, Mode, Reply},
-};
+use strum::IntoEnumIterator;
+use zenoh::{bytes::ZBytes, internal::Value, key_expr::OwnedKeyExpr, query::Reply};
 
 use crate::{
-    app::{f64_create_rich_text, i64_create_rich_text, value_create_rich_text, ZenohValue},
-    hex_viewer::HexViewer,
-    zenoh::QueryData,
+    payload_editor::{ArchivePayloadEdit, PayloadEdit},
+    reply_viewer::ReplyViewer,
+    task_zenoh::QueryData,
+    zenoh_data::{zenoh_value_abstract, ZConsolidation, ZLocality, ZQueryTarget},
 };
 
 // query
@@ -34,123 +25,37 @@ pub enum Event {
     Get(Box<QueryData>),
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZQueryTarget {
-    BestMatching,
-    All,
-    AllComplete,
-}
-
-impl From<QueryTarget> for ZQueryTarget {
-    fn from(value: QueryTarget) -> Self {
-        match value {
-            QueryTarget::BestMatching => ZQueryTarget::BestMatching,
-            QueryTarget::All => ZQueryTarget::All,
-            QueryTarget::AllComplete => ZQueryTarget::AllComplete,
-        }
-    }
-}
-
-impl Into<QueryTarget> for ZQueryTarget {
-    fn into(self) -> QueryTarget {
-        match self {
-            ZQueryTarget::BestMatching => QueryTarget::BestMatching,
-            ZQueryTarget::All => QueryTarget::All,
-            ZQueryTarget::AllComplete => QueryTarget::AllComplete,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZConsolidation {
-    Auto,
-    None,
-    Monotonic,
-    Latest,
-}
-
-impl From<QueryConsolidation> for ZConsolidation {
-    fn from(value: QueryConsolidation) -> Self {
-        match value.mode() {
-            Mode::Auto => ZConsolidation::Auto,
-            Mode::Manual(m) => match m {
-                ConsolidationMode::None => ZConsolidation::None,
-                ConsolidationMode::Monotonic => ZConsolidation::Monotonic,
-                ConsolidationMode::Latest => ZConsolidation::Latest,
-            },
-        }
-    }
-}
-
-impl Into<QueryConsolidation> for ZConsolidation {
-    fn into(self) -> QueryConsolidation {
-        match self {
-            ZConsolidation::Auto => QueryConsolidation::AUTO,
-            ZConsolidation::None => QueryConsolidation::from(ConsolidationMode::None),
-            ZConsolidation::Monotonic => QueryConsolidation::from(ConsolidationMode::Monotonic),
-            ZConsolidation::Latest => QueryConsolidation::from(ConsolidationMode::Latest),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ZLocality {
-    SessionLocal,
-    Remote,
-    Any,
-}
-
-impl From<Locality> for ZLocality {
-    fn from(value: Locality) -> Self {
-        match value {
-            Locality::SessionLocal => ZLocality::SessionLocal,
-            Locality::Remote => ZLocality::Remote,
-            Locality::Any => ZLocality::Any,
-        }
-    }
-}
-
-impl Into<Locality> for ZLocality {
-    fn into(self) -> Locality {
-        match self {
-            ZLocality::SessionLocal => Locality::SessionLocal,
-            ZLocality::Remote => Locality::Remote,
-            ZLocality::Any => Locality::Any,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
-pub struct DataItem {
+pub struct ArchivePageGetData {
     name: String,
     key: String,
+    attachment: String,
     target: ZQueryTarget,
     consolidation: ZConsolidation,
     locality: ZLocality,
     timeout: u64,
-    value: ZenohValue,
+    payload: bool,
+    archive_payload_edit: ArchivePayloadEdit,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-pub struct Data {
-    gets: Vec<DataItem>,
+pub struct ArchivePageGet {
+    gets: Vec<ArchivePageGetData>,
 }
 
 pub struct PageGetData {
     id: u64,
     name: String,
     input_key: String,
-    selected_target: QueryTarget,
-    selected_consolidation: QueryConsolidation,
-    selected_locality: Locality,
+    input_attachment: String,
+    selected_target: ZQueryTarget,
+    selected_consolidation: ZConsolidation,
+    selected_locality: ZLocality,
     timeout: u64,
-    edit_str: String,
-    selected_encoding: KnownEncoding,
+    payload: bool,
+    payload_edit: PayloadEdit,
     replies: Vec<Reply>,
-    info: Option<RichText>,
+    error_info: Option<RichText>,
 }
 
 impl Default for PageGetData {
@@ -159,114 +64,145 @@ impl Default for PageGetData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/test".to_string(),
-            selected_target: QueryTarget::default(),
-            selected_consolidation: QueryConsolidation::default(),
-            selected_locality: Locality::default(),
+            input_attachment: String::new(),
+            selected_target: ZQueryTarget::BestMatching,
+            selected_consolidation: ZConsolidation::Auto,
+            selected_locality: ZLocality::Any,
             timeout: 10000,
-            edit_str: String::new(),
-            selected_encoding: KnownEncoding::Empty,
+            payload: false,
+            payload_edit: PayloadEdit::default(),
             replies: Vec::new(),
-            info: None,
+            error_info: None,
         }
     }
 }
 
-impl PageGetData {
-    fn from(data: &DataItem) -> PageGetData {
-        let (encoding, s) = data.value.to();
+impl From<&PageGetData> for PageGetData {
+    fn from(value: &PageGetData) -> Self {
         PageGetData {
             id: 0,
-            name: data.name.clone(),
-            input_key: data.key.clone(),
-            selected_target: data.target.into(),
-            selected_consolidation: data.consolidation.into(),
-            selected_locality: data.locality.into(),
-            timeout: data.timeout,
-            edit_str: s,
-            selected_encoding: encoding,
-            replies: vec![],
-            info: None,
-        }
-    }
-
-    fn to(&self) -> DataItem {
-        let value = ZenohValue::from(self.selected_encoding, self.edit_str.clone());
-        DataItem {
-            name: self.name.clone(),
-            key: self.input_key.clone(),
-            target: self.selected_target.into(),
-            consolidation: self.selected_consolidation.into(),
-            locality: self.selected_locality.into(),
-            timeout: self.timeout,
-            value,
-        }
-    }
-
-    fn new_from(pgd: &PageGetData) -> Self {
-        PageGetData {
-            id: 0,
-            name: pgd.name.clone(),
-            input_key: pgd.input_key.clone(),
-            selected_target: pgd.selected_target,
-            selected_consolidation: pgd.selected_consolidation,
-            selected_locality: pgd.selected_locality,
-            timeout: pgd.timeout,
-            edit_str: pgd.edit_str.clone(),
-            selected_encoding: pgd.selected_encoding,
+            name: value.name.clone(),
+            input_key: value.input_key.clone(),
+            input_attachment: value.input_attachment.clone(),
+            selected_target: value.selected_target,
+            selected_consolidation: value.selected_consolidation,
+            selected_locality: value.selected_locality,
+            timeout: value.timeout,
+            payload: value.payload,
+            payload_edit: (&value.payload_edit).into(),
             replies: Vec::new(),
-            info: None,
+            error_info: None,
         }
     }
+}
 
+impl From<&PageGetData> for ArchivePageGetData {
+    fn from(value: &PageGetData) -> Self {
+        ArchivePageGetData {
+            name: value.name.clone(),
+            key: value.input_key.clone(),
+            attachment: value.input_attachment.clone(),
+            target: value.selected_target,
+            consolidation: value.selected_consolidation,
+            locality: value.selected_locality,
+            timeout: value.timeout,
+            payload: value.payload,
+            archive_payload_edit: (&value.payload_edit).into(),
+        }
+    }
+}
+
+impl TryFrom<&ArchivePageGetData> for PageGetData {
+    type Error = String;
+
+    fn try_from(value: &ArchivePageGetData) -> Result<Self, Self::Error> {
+        Ok(PageGetData {
+            id: 0,
+            name: value.name.clone(),
+            input_key: value.key.clone(),
+            input_attachment: value.attachment.clone(),
+            selected_target: value.target,
+            selected_consolidation: value.consolidation,
+            selected_locality: value.locality,
+            timeout: value.timeout,
+            payload: value.payload,
+            payload_edit: (&value.archive_payload_edit).try_into()?,
+            replies: Vec::new(),
+            error_info: None,
+        })
+    }
+}
+
+impl TryFrom<ArchivePageGetData> for PageGetData {
+    type Error = String;
+
+    fn try_from(value: ArchivePageGetData) -> Result<Self, Self::Error> {
+        Ok(PageGetData {
+            id: 0,
+            name: value.name,
+            input_key: value.key,
+            input_attachment: value.attachment,
+            selected_target: value.target,
+            selected_consolidation: value.consolidation,
+            selected_locality: value.locality,
+            timeout: value.timeout,
+            payload: value.payload,
+            payload_edit: (&value.archive_payload_edit).try_into()?,
+            replies: Vec::new(),
+            error_info: None,
+        })
+    }
+}
+
+impl PageGetData {
     fn show(
         &mut self,
         ui: &mut Ui,
         events: &mut VecDeque<Event>,
         show_window: &mut bool,
-        reply_window: &mut ViewReplyWindow,
+        reply_window: &mut ReplyViewer,
     ) {
-        ui.vertical(|ui| {
+        self.show_name_key_attachment(ui, events);
+        ScrollArea::horizontal()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                self.show_options(ui);
+                self.show_payload_edit(ui);
+                ui.separator();
+                self.show_reply_table(ui, show_window, reply_window);
+            });
+    }
+
+    fn show_name_key_attachment(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
+        let mut input_grid = |ui: &mut Ui| {
+            ui.label("name:");
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 if ui.button("send").clicked() {
                     self.send(events);
                 }
+                TextEdit::singleline(&mut self.name)
+                    .desired_width(3000.0)
+                    .font(TextStyle::Monospace)
+                    .ui(ui);
             });
-
-            self.show_name_key(ui);
-            self.show_options(ui);
-
-            ui.separator();
-
-            if let Some(rt) = &self.info {
-                ui.label(rt.clone());
-                return;
-            };
-
-            ScrollArea::horizontal()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    self.show_reply(ui, show_window, reply_window);
-                });
-        });
-    }
-
-    fn show_name_key(&mut self, ui: &mut Ui) {
-        let mut input_grid = |ui: &mut Ui| {
-            ui.label("name: ");
-            let te = TextEdit::singleline(&mut self.name)
-                .desired_width(600.0)
-                .font(TextStyle::Monospace);
-            ui.add(te);
             ui.end_row();
 
-            ui.label("key: ");
-            let te = TextEdit::multiline(&mut self.input_key)
-                .desired_rows(2)
-                .desired_width(600.0)
-                .font(TextStyle::Monospace);
-            ui.add(te);
+            ui.label("key:");
+            TextEdit::multiline(&mut self.input_key)
+                .desired_rows(1)
+                .desired_width(3000.0)
+                .font(TextStyle::Monospace)
+                .ui(ui);
+            ui.end_row();
+
+            ui.label("attachment:");
+            TextEdit::singleline(&mut self.input_attachment)
+                .desired_width(3000.0)
+                .font(TextStyle::Monospace)
+                .ui(ui);
+            ui.end_row();
         };
-        egui::Grid::new("input_grid")
+        Grid::new("input_grid")
             .num_columns(2)
             .striped(false)
             .show(ui, |ui| {
@@ -276,178 +212,155 @@ impl PageGetData {
 
     fn show_options(&mut self, ui: &mut Ui) {
         let mut show_grid = |ui: &mut Ui| {
-            ui.label("target: ");
-            egui::ComboBox::new("query target", "")
-                .selected_text(format!("{:?}", self.selected_target))
+            ui.label("target:");
+            ComboBox::new("query target", "")
+                .selected_text(self.selected_target.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [
-                        QueryTarget::BestMatching,
-                        QueryTarget::All,
-                        QueryTarget::AllComplete,
-                    ];
-                    for option in options {
+                    for option in ZQueryTarget::iter() {
+                        ui.selectable_value(&mut self.selected_target, option, option.as_ref());
+                    }
+                });
+            ui.end_row();
+
+            ui.label("consolidation:");
+            ComboBox::new("consolidation", "")
+                .selected_text(self.selected_consolidation.as_ref())
+                .show_ui(ui, |ui| {
+                    for option in ZConsolidation::iter() {
                         ui.selectable_value(
-                            &mut self.selected_target,
+                            &mut self.selected_consolidation,
                             option,
-                            format!("{:?}", option),
+                            option.as_ref(),
                         );
                     }
                 });
             ui.end_row();
 
-            let dc = |c: QueryConsolidation| match c.mode() {
-                Mode::Auto => "Auto",
-                Mode::Manual(m) => match m {
-                    ConsolidationMode::None => "None",
-                    ConsolidationMode::Monotonic => "Monotonic",
-                    ConsolidationMode::Latest => "Latest",
-                },
-            };
-
-            ui.label("consolidation: ");
-            egui::ComboBox::new("consolidation", "")
-                .selected_text(dc(self.selected_consolidation))
+            ui.label("locality:");
+            ComboBox::new("locality", "")
+                .selected_text(self.selected_locality.as_ref())
                 .show_ui(ui, |ui| {
-                    let options = [
-                        QueryConsolidation::AUTO,
-                        QueryConsolidation::from(ConsolidationMode::None),
-                        QueryConsolidation::from(ConsolidationMode::Monotonic),
-                        QueryConsolidation::from(ConsolidationMode::Latest),
-                    ];
-                    for option in options {
-                        ui.selectable_value(&mut self.selected_consolidation, option, dc(option));
+                    for option in ZLocality::iter() {
+                        ui.selectable_value(&mut self.selected_locality, option, option.as_ref());
                     }
                 });
             ui.end_row();
 
-            ui.label("locality: ");
-            egui::ComboBox::new("locality", "")
-                .selected_text(format!("{:?}", self.selected_locality))
-                .show_ui(ui, |ui| {
-                    let options = [Locality::SessionLocal, Locality::Remote, Locality::Any];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_locality,
-                            option,
-                            format!("{:?}", option),
-                        );
-                    }
-                });
-            ui.end_row();
-
-            ui.label("timeout: ");
+            ui.label("timeout:");
             let dv = DragValue::new(&mut self.timeout)
+                .suffix("ms")
                 .speed(10.0)
-                .clamp_range(0..=10000);
+                .range(0..=10000);
             ui.add(dv);
             ui.end_row();
-
-            ui.label("query payload: ");
-            egui::ComboBox::new("query payload", "")
-                .selected_text(format!("{}", Encoding::Exact(self.selected_encoding)))
-                .show_ui(ui, |ui| {
-                    let options = [
-                        KnownEncoding::Empty,
-                        KnownEncoding::TextPlain,
-                        KnownEncoding::TextJson,
-                        KnownEncoding::AppJson,
-                        KnownEncoding::AppInteger,
-                        KnownEncoding::AppFloat,
-                        KnownEncoding::AppSql,
-                        KnownEncoding::AppXml,
-                        KnownEncoding::AppXhtmlXml,
-                        KnownEncoding::TextHtml,
-                        KnownEncoding::TextXml,
-                        KnownEncoding::TextCss,
-                        KnownEncoding::TextCsv,
-                        KnownEncoding::TextJavascript,
-                    ];
-                    for option in options {
-                        ui.selectable_value(
-                            &mut self.selected_encoding,
-                            option,
-                            format!("{}", Encoding::Exact(option)),
-                        );
-                    }
-                });
-            ui.end_row();
         };
 
-        egui::Grid::new("options_grid")
-            .num_columns(2)
-            .striped(false)
+        CollapsingHeader::new("Options")
+            .default_open(true)
             .show(ui, |ui| {
-                show_grid(ui);
+                Grid::new("options_grid")
+                    .num_columns(2)
+                    .striped(false)
+                    .show(ui, |ui| {
+                        show_grid(ui);
+                    });
             });
-
-        let text_edit_multiline = |edit_str: &mut String, ui: &mut Ui| {
-            ui.add(
-                TextEdit::multiline(edit_str)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(3)
-                    .code_editor(),
-            );
-        };
-        match self.selected_encoding {
-            KnownEncoding::Empty => {}
-            KnownEncoding::TextPlain => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppInteger => {
-                ui.add(TextEdit::singleline(&mut self.edit_str));
-            }
-            KnownEncoding::AppFloat => {
-                ui.add(TextEdit::singleline(&mut self.edit_str));
-            }
-            KnownEncoding::TextJson => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppOctetStream => {}
-            KnownEncoding::AppCustom => {}
-            KnownEncoding::AppProperties => {}
-            KnownEncoding::AppSql => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppXhtmlXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::AppXWwwFormUrlencoded => {}
-            KnownEncoding::TextHtml => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::TextXml => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::TextCss => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::TextCsv => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::TextJavascript => {
-                text_edit_multiline(&mut self.edit_str, ui);
-            }
-            KnownEncoding::ImageJpeg => {}
-            KnownEncoding::ImagePng => {}
-            KnownEncoding::ImageGif => {}
-        };
     }
 
-    fn show_reply(
+    fn show_payload_edit(&mut self, ui: &mut Ui) {
+        CollapsingHeader::new("Payload")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.checkbox(&mut self.payload, "payload");
+
+                if self.payload {
+                    self.payload_edit.show(ui);
+                }
+            });
+    }
+
+    fn show_reply_table(
         &mut self,
         ui: &mut Ui,
         show_window: &mut bool,
-        reply_window: &mut ViewReplyWindow,
+        reply_window: &mut ReplyViewer,
     ) {
         if self.replies.is_empty() {
             return;
         }
+
+        let table_header = |mut table_row: TableRow| {
+            table_row.col(|ui| {
+                ui.label("key");
+            });
+            table_row.col(|ui| {
+                ui.label("value");
+            });
+            table_row.col(|ui| {
+                ui.label("type");
+            });
+            table_row.col(|ui| {
+                ui.label("timestamp");
+            });
+        };
+
+        let table_body = |mut body: TableBody| {
+            for reply in &self.replies {
+                body.row(20.0, |mut row| {
+                    match reply.result() {
+                        Ok(sample) => {
+                            row.col(|ui| {
+                                ui.label(sample.key_expr().as_str());
+                            });
+                            row.col(|ui| {
+                                let text =
+                                    zenoh_value_abstract(sample.encoding(), sample.payload());
+                                let rich_text = match text {
+                                    Ok(o) => RichText::new(o),
+                                    Err(e) => RichText::new(e).color(Color32::RED),
+                                };
+
+                                if ui.button(rich_text).clicked() {
+                                    *reply_window = ReplyViewer::new_from_reply(reply);
+                                    *show_window = true;
+                                }
+                            });
+                            row.col(|ui| {
+                                ui.label(sample.encoding().to_string());
+                            });
+                            row.col(|ui| {
+                                let rich_text = if let Some(timestamp) = sample.timestamp() {
+                                    RichText::new(format!("{}", timestamp.get_time())).size(12.0)
+                                } else {
+                                    RichText::new("-")
+                                };
+                                ui.label(rich_text);
+                            });
+                        }
+                        Err(e) => {
+                            let text = zenoh_value_abstract(e.encoding(), e.payload())
+                                .unwrap_or_else(|s| s);
+                            let text = RichText::new(text).size(12.0).color(Color32::RED);
+                            row.col(|ui| {
+                                if ui.button("...").clicked() {
+                                    *reply_window = ReplyViewer::new_from_reply(reply);
+                                    *show_window = true;
+                                }
+                            });
+                            row.col(|ui| {
+                                ui.label(text);
+                            });
+                            row.col(|ui| {
+                                ui.label("-");
+                            });
+                            row.col(|ui| {
+                                ui.label("-");
+                            });
+                        }
+                    };
+                })
+            }
+        };
 
         let table = TableBuilder::new(ui)
             .striped(true)
@@ -458,359 +371,44 @@ impl PageGetData {
             .column(Column::remainder())
             .resizable(true);
 
-        table
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.label("key");
-                });
-                header.col(|ui| {
-                    ui.label("value");
-                });
-                header.col(|ui| {
-                    ui.label("type");
-                });
-                header.col(|ui| {
-                    ui.label("timestamp");
-                });
-            })
-            .body(|mut body| {
-                for reply in &self.replies {
-                    body.row(20.0, |mut row| {
-                        match &reply.sample {
-                            Ok(o) => {
-                                let text_key = o.key_expr.to_string();
-                                let text_timestamp = match o.timestamp {
-                                    None => "-".to_string(),
-                                    Some(s) => s.to_string(),
-                                };
-                                let text_type = format!("{}", o.encoding);
-                                let text_button = value_create_rich_text(&o.value);
-                                row.col(|ui| {
-                                    ui.label(text_key);
-                                });
-                                row.col(|ui| {
-                                    if let Some(text) = text_button {
-                                        if ui.button(text).clicked() {
-                                            reply_window.reply = Some(reply.clone());
-                                            *show_window = true;
-                                        }
-                                    } else {
-                                        ui.label("...");
-                                    }
-                                });
-                                row.col(|ui| {
-                                    ui.label(text_type);
-                                });
-                                row.col(|ui| {
-                                    ui.label(text_timestamp);
-                                });
-                            }
-                            Err(e) => {
-                                let text = String::try_from(e).unwrap();
-                                let text = RichText::new(text).size(12.0).color(Color32::RED);
-                                row.col(|ui| {
-                                    ui.label(text);
-                                });
-                                row.col(|ui| {
-                                    if ui.button("...").clicked() {
-                                        reply_window.reply = Some(reply.clone());
-                                        *show_window = true;
-                                    }
-                                });
-                                row.col(|ui| {
-                                    ui.label("-");
-                                });
-                                row.col(|ui| {
-                                    ui.label("-");
-                                });
-                            }
-                        };
-                    })
-                }
-            });
+        table.header(20.0, table_header).body(table_body);
     }
 
     fn send(&mut self, events: &mut VecDeque<Event>) {
         self.replies.clear();
-        self.info = None;
         let key_str = self.input_key.replace(&[' ', '\t', '\n', '\r'], "");
         let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_str.as_str()) {
             Ok(o) => o,
             Err(e) => {
                 let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                self.info = Some(rt);
+                self.error_info = Some(rt);
                 return;
             }
         };
-        let v = match self.selected_encoding {
-            KnownEncoding::Empty => None,
-            KnownEncoding::AppJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
-                    let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                    self.info = Some(rt);
-                    return;
-                }
-                let v = Value::from(self.edit_str.as_str()).encoding(KnownEncoding::AppJson.into());
-                Some(v)
-            }
-            KnownEncoding::AppInteger => {
-                let i: i64 = match self.edit_str.parse::<i64>() {
-                    Ok(i) => i,
-                    Err(e) => {
-                        let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                        self.info = Some(rt);
-                        return;
-                    }
-                };
-                Some(Value::from(i))
-            }
-            KnownEncoding::AppFloat => {
-                let f: f64 = match self.edit_str.parse::<f64>() {
-                    Ok(f) => f,
-                    Err(e) => {
-                        let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                        self.info = Some(rt);
-                        return;
-                    }
-                };
-                Some(Value::from(f))
-            }
-            KnownEncoding::TextJson => {
-                if let Err(e) = serde_json::from_str::<serde_json::Value>(self.edit_str.as_str()) {
-                    let rt = RichText::new(format!("{}", e)).color(Color32::RED);
-                    self.info = Some(rt);
-                    return;
-                }
-                let v =
-                    Value::from(self.edit_str.as_str()).encoding(KnownEncoding::TextJson.into());
-                Some(v)
-            }
-            KnownEncoding::AppOctetStream => None,
-            KnownEncoding::AppCustom => None,
-            KnownEncoding::AppProperties => None,
-            KnownEncoding::AppXWwwFormUrlencoded => None,
-            KnownEncoding::ImageJpeg => None,
-            KnownEncoding::ImagePng => None,
-            KnownEncoding::ImageGif => None,
-            str_encoding => {
-                let v = Value::from(self.edit_str.as_str()).encoding(str_encoding.into());
-                Some(v)
-            }
+
+        let value: Option<Value> = if self.payload {
+            self.payload_edit.get_zenoh_value()
+        } else {
+            None
         };
+
+        let attachment: Option<ZBytes> = if self.input_attachment.is_empty() {
+            None
+        } else {
+            Some(ZBytes::from(self.input_attachment.as_str()))
+        };
+
         let d = QueryData {
             id: self.id,
             key_expr: key,
-            target: self.selected_target,
-            consolidation: self.selected_consolidation,
-            locality: self.selected_locality,
+            attachment,
+            target: self.selected_target.into(),
+            consolidation: self.selected_consolidation.into(),
+            locality: self.selected_locality.into(),
             timeout: Duration::from_millis(self.timeout),
-            value: v,
+            value,
         };
         events.push_back(Event::Get(Box::new(d)));
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum ViewReplyWindowPage {
-    Raw,
-    Parse,
-}
-
-struct ViewReplyWindow {
-    selected_page: ViewReplyWindowPage,
-    reply: Option<Reply>,
-    hex_viewer: HexViewer,
-}
-
-impl Default for ViewReplyWindow {
-    fn default() -> Self {
-        ViewReplyWindow {
-            selected_page: ViewReplyWindowPage::Parse,
-            reply: None,
-            hex_viewer: HexViewer::new(vec![]),
-        }
-    }
-}
-
-impl ViewReplyWindow {
-    fn show(&mut self, ctx: &Context, is_open: &mut bool) {
-        let window = egui::Window::new("Info")
-            .id(Id::new("view reply window"))
-            .collapsible(false)
-            .scroll2([true, true])
-            .open(is_open)
-            .resizable(true)
-            .default_width(200.0)
-            .min_width(200.0);
-
-        window.show(ctx, |ui| {
-            let reply = match &self.reply {
-                None => {
-                    ui.label("none");
-                    return;
-                }
-                Some(s) => s,
-            };
-
-            match &reply.sample {
-                Ok(sample) => {
-                    Self::show_base_info(reply.replier_id, sample, ui);
-
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(
-                            &mut self.selected_page,
-                            ViewReplyWindowPage::Parse,
-                            "parse",
-                        );
-
-                        if ui
-                            .selectable_value(
-                                &mut self.selected_page,
-                                ViewReplyWindowPage::Raw,
-                                "raw",
-                            )
-                            .clicked()
-                        {
-                            if let Some(reply) = &self.reply {
-                                if let Ok(sample) = &reply.sample {
-                                    let value = &sample.value;
-                                    let data_len = value.payload.len();
-                                    let mut data: Vec<u8> = Vec::with_capacity(data_len);
-                                    data.resize(data_len, 0);
-                                    let _ = value.payload.reader().read_exact(data.as_mut_slice());
-                                    self.hex_viewer = HexViewer::new(data);
-                                }
-                            }
-                        }
-                    });
-
-                    match self.selected_page {
-                        ViewReplyWindowPage::Raw => {
-                            self.hex_viewer.show(ui);
-                        }
-                        ViewReplyWindowPage::Parse => {
-                            Self::show_page_parse(&sample.value, ui);
-                        }
-                    };
-                }
-                Err(value) => {
-                    ui.horizontal(|ui| {
-                        if ui.button("replier id:").on_hover_text("copy").clicked() {
-                            let mut clipboard = Clipboard::new().unwrap();
-                            clipboard.set_text(reply.replier_id.to_string()).unwrap();
-                        }
-                        let text = RichText::new(reply.replier_id.to_string()).monospace();
-                        ui.label(text);
-                    });
-
-                    let text: RichText = match String::try_from(value) {
-                        Ok(o) => RichText::new(o).monospace().color(Color32::RED),
-                        Err(e) => RichText::new(e.to_string()).monospace().color(Color32::RED),
-                    };
-                    ui.label(text);
-                }
-            }
-        });
-    }
-
-    fn show_page_parse(value: &Value, ui: &mut Ui) {
-        match value.encoding.prefix() {
-            KnownEncoding::TextPlain => {
-                let mut s = match String::try_from(value) {
-                    Ok(s) => s,
-                    Err(e) => format!("{}", e),
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
-            }
-            KnownEncoding::AppJson => {
-                let mut s: String = match serde_json::Value::try_from(value) {
-                    Ok(o) => {
-                        format!("{:#}", o)
-                    }
-                    Err(e) => {
-                        format!("{}", e)
-                    }
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
-            }
-            KnownEncoding::AppInteger => {
-                let text: RichText = i64_create_rich_text(value);
-                ui.label(text);
-            }
-            KnownEncoding::AppFloat => {
-                let text: RichText = f64_create_rich_text(value);
-                ui.label(text);
-            }
-            KnownEncoding::TextJson => {
-                let mut s: String = match serde_json::Value::try_from(value) {
-                    Ok(o) => {
-                        format!("{:#}", o)
-                    }
-                    Err(e) => {
-                        format!("{}", e)
-                    }
-                };
-                ui.add(
-                    TextEdit::multiline(&mut s)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
-            }
-            _ => {}
-        }
-    }
-
-    fn show_base_info(replier_id: ZenohId, sample: &Sample, ui: &mut Ui) {
-        let show_ui = |ui: &mut Ui| {
-            if ui.button("replier id:").on_hover_text("copy").clicked() {
-                let mut clipboard = Clipboard::new().unwrap();
-                clipboard.set_text(replier_id.to_string()).unwrap();
-            }
-            let text = RichText::new(replier_id.to_string()).monospace();
-            ui.label(text);
-            ui.end_row();
-
-            if ui.button("key:").on_hover_text("copy").clicked() {
-                let mut clipboard = Clipboard::new().unwrap();
-                clipboard.set_text(sample.key_expr.as_str()).unwrap();
-            }
-            let text = RichText::new(sample.key_expr.as_str()).monospace();
-            ui.label(text);
-            ui.end_row();
-
-            ui.label("kind:  ");
-            let text = RichText::new(sample.kind.to_string()).monospace();
-            ui.label(text);
-            ui.end_row();
-
-            ui.label("encoding:  ");
-            let text = RichText::new(format!("{}", sample.value.encoding)).monospace();
-            ui.label(text);
-            ui.end_row();
-
-            ui.label("timestamp:  ");
-            let text = if let Some(t) = sample.timestamp {
-                RichText::new(t.to_string().replace('/', "\n")).monospace()
-            } else {
-                RichText::new("none").monospace()
-            };
-            ui.label(text);
-            ui.end_row();
-        };
-
-        egui::Grid::new("base_info").num_columns(2).show(ui, |ui| {
-            show_ui(ui);
-        });
     }
 }
 
@@ -819,8 +417,8 @@ pub struct PageGet {
     pub data_map: BTreeMap<u64, PageGetData>,
     selected_data_id: u64,
     get_id_count: u64,
-    show_view_reply_window: bool,
-    view_reply_window: ViewReplyWindow,
+    show_reply_viewer_window: bool,
+    reply_viewer_window: ReplyViewer,
     // dnd: DragDropUi,
     dnd_items: Vec<DndItem>,
 }
@@ -832,8 +430,8 @@ impl Default for PageGet {
             data_map: BTreeMap::new(),
             selected_data_id: 1,
             get_id_count: 0,
-            show_view_reply_window: false,
-            view_reply_window: ViewReplyWindow::default(),
+            show_reply_viewer_window: false,
+            reply_viewer_window: ReplyViewer::default(),
             // dnd: DragDropUi::default(),
             dnd_items: Vec::new(),
         };
@@ -842,34 +440,43 @@ impl Default for PageGet {
     }
 }
 
-impl PageGet {
-    pub fn load(&mut self, data: Data) {
-        self.clean_all_get_data();
-
-        for d in data.gets {
-            let page_data = PageGetData::from(&d);
-            self.add_get_data(page_data);
+impl From<&PageGet> for ArchivePageGet {
+    fn from(value: &PageGet) -> Self {
+        ArchivePageGet {
+            gets: value
+                .dnd_items
+                .iter()
+                .filter_map(|k| value.data_map.get(&k.key_id))
+                .map(|d| d.into())
+                .collect(),
         }
     }
+}
 
-    pub fn create_store_data(&self) -> Data {
-        let data = self
-            .dnd_items
-            .iter()
-            .filter_map(|k| self.data_map.get(&k.key_id))
-            .map(|d| d.to())
-            .collect();
-        Data { gets: data }
+impl PageGet {
+    pub fn load(&mut self, archive: ArchivePageGet) -> Result<(), String> {
+        let mut data = Vec::with_capacity(archive.gets.len());
+        for d in archive.gets {
+            let page_get_data = PageGetData::try_from(d)?;
+            data.push(page_get_data);
+        }
+
+        self.clean_all_get_data();
+
+        for d in data {
+            self.add_get_data(d);
+        }
+        Ok(())
     }
 
     pub fn show(&mut self, ctx: &Context) {
-        egui::SidePanel::left("page_get_panel_left")
+        SidePanel::left("page_get_panel_left")
             .resizable(true)
             .show(ctx, |ui| {
                 self.show_gets_name(ui);
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
@@ -880,62 +487,67 @@ impl PageGet {
             data.show(
                 ui,
                 &mut self.events,
-                &mut self.show_view_reply_window,
-                &mut self.view_reply_window,
+                &mut self.show_reply_viewer_window,
+                &mut self.reply_viewer_window,
             );
+        });
 
-            self.view_reply_window
-                .show(ctx, &mut self.show_view_reply_window);
+        let window = Window::new("Reply info")
+            .id(Id::new("view reply window"))
+            .collapsible(false)
+            .scroll([true, true])
+            .open(&mut self.show_reply_viewer_window)
+            .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0);
+
+        window.show(ctx, |ui| {
+            self.reply_viewer_window.show(ui);
         });
     }
 
     fn show_gets_name(&mut self, ui: &mut Ui) {
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                if ui
-                    .button(RichText::new(" + ").code())
-                    .on_hover_text("copy add")
-                    .clicked()
-                {
-                    if let Some(d) = self.data_map.get(&self.selected_data_id) {
-                        self.add_get_data(PageGetData::new_from(d));
-                    } else {
-                        self.add_get_data(PageGetData::default());
-                    }
-                };
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(RichText::new(" + ").code())
+                .on_hover_text("copy add")
+                .clicked()
+            {
+                if let Some(d) = self.data_map.get(&self.selected_data_id) {
+                    self.add_get_data(PageGetData::from(d));
+                } else {
+                    self.add_get_data(PageGetData::default());
+                }
+            };
 
-                if ui
-                    .button(RichText::new(" - ").code())
-                    .on_hover_text("del")
-                    .clicked()
-                {
-                    self.del_get_data(self.selected_data_id);
-                };
-            });
-
-            ui.label(" ");
-
-            ScrollArea::both()
-                .max_width(200.0)
-                .auto_shrink([true, false])
-                .show(ui, |ui| {
-                    dnd(ui, "page_get_list").show_vec(
-                        self.dnd_items.as_mut_slice(),
-                        |ui, item, handle, _state| {
-                            if let Some(d) = self.data_map.get(&item.key_id) {
-                                handle.ui(ui, |ui| {
-                                    let text = RichText::new(d.name.as_str());
-                                    ui.selectable_value(
-                                        &mut self.selected_data_id,
-                                        item.key_id,
-                                        text,
-                                    );
-                                });
-                            }
-                        },
-                    )
-                });
+            if ui
+                .button(RichText::new(" - ").code())
+                .on_hover_text("del")
+                .clicked()
+            {
+                self.del_get_data(self.selected_data_id);
+            };
         });
+
+        ui.add_space(10.0);
+
+        ScrollArea::both()
+            .max_width(200.0)
+            .auto_shrink([true, false])
+            .show(ui, |ui| {
+                dnd(ui, "page_get_list").show_vec(
+                    self.dnd_items.as_mut_slice(),
+                    |ui, item, handle, _state| {
+                        if let Some(d) = self.data_map.get(&item.key_id) {
+                            handle.ui(ui, |ui| {
+                                let text = RichText::new(d.name.as_str());
+                                ui.selectable_value(&mut self.selected_data_id, item.key_id, text);
+                            });
+                        }
+                    },
+                )
+            });
     }
 
     fn add_get_data(&mut self, mut data: PageGetData) {
@@ -972,7 +584,7 @@ impl PageGet {
     pub fn processing_get_res(&mut self, res: Box<(u64, Reply)>) {
         let (id, reply) = *res;
         if let Some(d) = self.data_map.get_mut(&id) {
-            d.info = None;
+            d.error_info = None;
             d.replies.push(reply);
         }
     }

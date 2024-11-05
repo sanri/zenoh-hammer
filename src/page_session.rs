@@ -1,248 +1,493 @@
-use eframe::{
-    egui,
-    egui::{
-        Align, CollapsingHeader, Color32, Context, Id, Layout, RichText, ScrollArea, TextEdit,
-        TextStyle,
-    },
+use eframe::egui::{
+    Align, CentralPanel, Color32, Context, Grid, Layout, RichText, ScrollArea, SidePanel, TextEdit,
+    TextStyle, Ui, Widget,
 };
+use egui_dnd::dnd;
+use egui_file::{DialogType, FileDialog};
+use egui_json_tree::JsonTree;
+use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{collections::VecDeque, str::FromStr};
-use zenoh::config::{Config, EndPoint, WhatAmI};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    fs,
+    path::PathBuf,
+    str::FromStr,
+};
 
 pub enum Event {
-    Connect(Box<Config>),
+    Connect(Box<(u64, PathBuf)>),
     Disconnect,
 }
 
-enum AEWKind {
-    Connect,
-    Listen,
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct ArchiveConfigFileData {
+    name: String,
+    path: String,
 }
 
-struct AddEndpointWindow {
-    kind: AEWKind,
-    edit_str: String,
-    err_str: String,
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct ArchivePageSession {
+    config_files: Vec<ArchiveConfigFileData>,
 }
 
-impl Default for AddEndpointWindow {
-    fn default() -> Self {
-        AddEndpointWindow {
-            kind: AEWKind::Connect,
-            edit_str: String::new(),
-            err_str: String::new(),
+struct ConfigFileData {
+    id: u64,
+    name: String,
+    path: Option<PathBuf>,
+    path_str: String,
+    err_str: Option<String>,
+    selected_page: FilePage,
+    source: String,
+    format: String,
+    serde_json_value: serde_json::Value,
+}
+
+impl From<&ConfigFileData> for ArchiveConfigFileData {
+    fn from(value: &ConfigFileData) -> Self {
+        let path = match &value.path {
+            None => String::new(),
+            Some(o) => o.to_string_lossy().to_string(),
+        };
+
+        ArchiveConfigFileData {
+            name: value.name.clone(),
+            path,
         }
     }
 }
 
-impl AddEndpointWindow {
-    fn show(&mut self, ctx: &Context, is_open: &mut bool, ve: &mut Vec<EndPoint>) {
-        let window_name = match self.kind {
-            AEWKind::Connect => "Connect",
-            AEWKind::Listen => "Listen",
-        };
-        let window = egui::Window::new(window_name)
-            .id(Id::new("add endpoint window"))
-            .collapsible(false)
-            .resizable(true)
-            .default_width(200.0)
-            .min_width(200.0);
+impl TryFrom<&ArchiveConfigFileData> for ConfigFileData {
+    type Error = String;
 
-        window.show(ctx, |ui| {
-            let te = TextEdit::singleline(&mut self.edit_str).font(TextStyle::Monospace);
-            ui.add(te);
+    fn try_from(value: &ArchiveConfigFileData) -> Result<Self, Self::Error> {
+        Ok(ConfigFileData {
+            id: 0,
+            name: value.name.clone(),
+            path: PathBuf::from_str(value.path.as_str()).ok(),
+            path_str: String::new(),
+            err_str: None,
+            selected_page: FilePage::Source,
+            source: String::new(),
+            format: String::new(),
+            serde_json_value: serde_json::Value::Null,
+        })
+    }
+}
 
-            let rt = RichText::new(self.err_str.as_str()).color(Color32::RED);
-            ui.label(rt);
+impl TryFrom<ArchiveConfigFileData> for ConfigFileData {
+    type Error = String;
 
-            ui.horizontal(|ui| {
-                ui.label("                 ");
+    fn try_from(value: ArchiveConfigFileData) -> Result<Self, Self::Error> {
+        Ok(ConfigFileData {
+            id: 0,
+            name: value.name,
+            path: PathBuf::from_str(value.path.as_str()).ok(),
+            path_str: String::new(),
+            err_str: None,
+            selected_page: FilePage::Source,
+            source: String::new(),
+            format: String::new(),
+            serde_json_value: serde_json::Value::Null,
+        })
+    }
+}
 
-                if ui.button("确定").clicked() {
-                    match EndPoint::from_str(self.edit_str.as_str()) {
-                        Ok(o) => {
-                            ve.push(o);
-                            *is_open = false;
-                            self.edit_str.clear();
-                        }
-                        Err(e) => {
-                            self.err_str = format!("{}", e);
-                        }
-                    };
+impl ConfigFileData {
+    fn new(name: String, path: PathBuf) -> Self {
+        ConfigFileData {
+            id: 0,
+            name,
+            path: Some(path),
+            path_str: String::new(),
+            err_str: None,
+            selected_page: FilePage::Source,
+            source: String::new(),
+            format: String::new(),
+            serde_json_value: serde_json::Value::Null,
+        }
+    }
+
+    fn show(
+        &mut self,
+        ui: &mut Ui,
+        connected_config_file_id: Option<u64>,
+        events: &mut VecDeque<Event>,
+    ) {
+        self.show_name_path(ui, connected_config_file_id, events);
+
+        if let Some(s) = &self.err_str {
+            ui.label(RichText::new(s).color(Color32::RED));
+        }
+
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.selected_page == FilePage::Source, "source")
+                .clicked()
+            {
+                self.selected_page = FilePage::Source;
+            }
+
+            if ui
+                .selectable_label(self.selected_page == FilePage::Format, "format")
+                .clicked()
+            {
+                self.selected_page = FilePage::Format;
+            }
+
+            if ui
+                .selectable_label(self.selected_page == FilePage::Tree, "tree")
+                .clicked()
+            {
+                self.selected_page = FilePage::Tree;
+            }
+        });
+
+        ui.add_space(4.0);
+
+        ScrollArea::both()
+            .auto_shrink([false, true])
+            .show(ui, |ui| match self.selected_page {
+                FilePage::Source => {
+                    TextEdit::multiline(&mut self.source)
+                        .desired_width(f32::INFINITY)
+                        .code_editor()
+                        .interactive(false)
+                        .ui(ui);
                 }
-
-                ui.label("  ");
-
-                if ui.button("取消").clicked() {
-                    *is_open = false;
-                    self.edit_str.clear();
+                FilePage::Format => {
+                    TextEdit::multiline(&mut self.format)
+                        .desired_width(f32::INFINITY)
+                        .code_editor()
+                        .interactive(false)
+                        .ui(ui);
+                }
+                FilePage::Tree => {
+                    JsonTree::new("page_session_json_tree", &self.serde_json_value).show(ui);
                 }
             });
-        });
+    }
+
+    fn show_name_path(
+        &mut self,
+        ui: &mut Ui,
+        connected_config_file_id: Option<u64>,
+        events: &mut VecDeque<Event>,
+    ) {
+        Grid::new("page_session_config_file")
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label("name");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let mut flag_self_connected = false;
+
+                    if let Some(id) = connected_config_file_id {
+                        flag_self_connected = id == self.id;
+                        ui.add_enabled_ui(flag_self_connected, |ui| {
+                            if ui
+                                .selectable_label(flag_self_connected, "close session")
+                                .clicked()
+                            {
+                                events.push_back(Event::Disconnect);
+                            }
+                        });
+                    } else {
+                        if ui.selectable_label(false, "open session").clicked() {
+                            self.err_str = None;
+                            if let Some(path_buf) = &self.path {
+                                let event = Event::Connect(Box::new((self.id, path_buf.clone())));
+                                events.push_back(event);
+                            } else {
+                                self.err_str = Some("no file path".to_string());
+                            }
+                        }
+                    }
+
+                    ui.add_enabled_ui(!flag_self_connected, |ui| {
+                        if ui.button("load").clicked() {
+                            self.err_str = None;
+                            if let Some(path_buf) = &self.path {
+                                self.load_from_file(path_buf.clone());
+                            } else {
+                                self.err_str = Some("no file path".to_string());
+                            }
+                        }
+                    });
+
+                    TextEdit::singleline(&mut self.name)
+                        .desired_width(3000.0)
+                        .font(TextStyle::Monospace)
+                        .interactive(!flag_self_connected)
+                        .ui(ui);
+                });
+                ui.end_row();
+
+                ui.label("path");
+                if let Some(s) = &self.path {
+                    self.path_str = s.to_string_lossy().to_string();
+                }
+                TextEdit::multiline(&mut self.path_str)
+                    .desired_rows(1)
+                    .desired_width(3000.0)
+                    .font(TextStyle::Monospace)
+                    .ui(ui);
+                ui.end_row();
+            });
+    }
+
+    fn load_from_file(&mut self, p: PathBuf) {
+        info!("loading config file \"{}\"", p.display());
+        self.source.clear();
+        self.format.clear();
+        self.serde_json_value = serde_json::Value::Null;
+        self.err_str = None;
+
+        let source = match fs::read_to_string(p.as_path()) {
+            Ok(o) => o,
+            Err(e) => {
+                warn!("failed to load config file, {}", e);
+                self.err_str = Some("failed to load config file".to_string());
+                return;
+            }
+        };
+
+        let serde_json_value = match json5::from_str::<serde_json::Value>(source.as_str()) {
+            Ok(o) => o,
+            Err(e) => {
+                warn!("failed to load config file, {}", e);
+                self.err_str = Some("failed to load config file".to_string());
+                return;
+            }
+        };
+
+        self.source = source;
+        self.format = serde_json::to_string_pretty(&serde_json_value).unwrap_or_default();
+        self.serde_json_value = serde_json_value;
+
+        info!("load config file ok \"{}\"", p.display());
     }
 }
 
 pub struct PageSession {
     pub events: VecDeque<Event>,
-    zenoh_config: Config,
-    config_json: String,
-    pub connected: bool,
-    show_add_endpoint_window: bool,
-    add_endpoint_window: AddEndpointWindow,
+    connected_config_file_id: Option<u64>,
+    selected_config_file_id: u64,
+    config_file_id_count: u64,
+    config_files: BTreeMap<u64, ConfigFileData>,
+    dnd_items: Vec<DndItem>,
+    file_dialog: Option<FileDialog>,
 }
 
 impl Default for PageSession {
     fn default() -> Self {
-        let config = Config::default();
-        let json: serde_json::Value = serde_json::to_value(&config).unwrap();
         PageSession {
             events: VecDeque::new(),
-            zenoh_config: config,
-            config_json: format!("{:#}", json),
-            connected: false,
-            show_add_endpoint_window: false,
-            add_endpoint_window: AddEndpointWindow::default(),
+            connected_config_file_id: None,
+            selected_config_file_id: 0,
+            config_file_id_count: 0,
+            config_files: BTreeMap::new(),
+            dnd_items: Vec::new(),
+            file_dialog: None,
+        }
+    }
+}
+
+impl From<&PageSession> for ArchivePageSession {
+    fn from(value: &PageSession) -> Self {
+        ArchivePageSession {
+            config_files: value
+                .dnd_items
+                .iter()
+                .filter_map(|k| value.config_files.get(&k.id))
+                .map(|d| d.into())
+                .collect(),
         }
     }
 }
 
 impl PageSession {
+    pub fn load(&mut self, archive: ArchivePageSession) -> Result<(), String> {
+        let mut data = Vec::with_capacity(archive.config_files.len());
+        for d in archive.config_files {
+            let config_file_data = ConfigFileData::try_from(d)?;
+            data.push(config_file_data);
+        }
+
+        self.clean_all_config_file_data();
+
+        for d in data {
+            self.add_config_file(d);
+        }
+        Ok(())
+    }
+
     pub fn show(&mut self, ctx: &Context) {
-        egui::SidePanel::left("page_session_panel_left")
+        SidePanel::left("page_session_panel_left")
             .resizable(true)
             .show(ctx, |ui| {
-                ui.vertical(|ui| {
-                    if self.connected {
-                        if ui.button("disconnect").clicked() {
-                            self.events.push_back(Event::Disconnect);
-                        }
-                    } else {
-                        if ui.button("connect").clicked() {
-                            self.events
-                                .push_back(Event::Connect(Box::new(self.zenoh_config.clone())));
-                        }
-                    }
-
-                    self.show_config_edit(ctx, ui);
-                });
+                self.show_config_file_list(ui);
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("pretty").clicked() {
-                        let json: serde_json::Value =
-                            serde_json::to_value(&self.zenoh_config).unwrap();
-                        self.config_json = format!("{:#}", json);
-                    };
-                    if ui.button("compact").clicked() {
-                        let json: serde_json::Value =
-                            serde_json::to_value(&self.zenoh_config).unwrap();
-                        self.config_json = format!("{}", json);
-                    };
-                });
-
-                ScrollArea::vertical().id_source("3").show(ui, |ui| {
-                    ui.add(
-                        TextEdit::multiline(&mut self.config_json)
-                            .desired_width(f32::INFINITY)
-                            .code_editor(),
-                    )
-                });
-            });
+        CentralPanel::default().show(ctx, |ui| {
+            if let Some(config_file_data) = self.config_files.get_mut(&self.selected_config_file_id)
+            {
+                config_file_data.show(ui, self.connected_config_file_id, &mut self.events);
+            }
         });
 
-        if self.show_add_endpoint_window {
-            let ve = match self.add_endpoint_window.kind {
-                AEWKind::Connect => &mut self.zenoh_config.connect.endpoints,
-                AEWKind::Listen => &mut self.zenoh_config.listen.endpoints,
+        let mut open_file_path: Option<PathBuf> = None;
+        if let Some(dialog) = &mut self.file_dialog {
+            if dialog.show(ctx).selected() {
+                match dialog.dialog_type() {
+                    DialogType::SelectFolder | DialogType::SaveFile => {
+                        return;
+                    }
+                    DialogType::OpenFile => {
+                        if let Some(p) = dialog.path() {
+                            open_file_path = Some(p.to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(p) = open_file_path {
+            let name = match p.file_stem() {
+                None => "new file".to_string(),
+                Some(o) => o.to_string_lossy().to_string(),
             };
-            self.add_endpoint_window
-                .show(ctx, &mut self.show_add_endpoint_window, ve);
+            self.add_config_file(ConfigFileData::new(name, p));
         }
     }
 
-    fn show_config_edit(&mut self, _ctx: &Context, ui: &mut egui::Ui) {
-        let rt_add = RichText::new("+").monospace();
-        let rt_del = RichText::new("-").monospace();
+    fn add_config_file(&mut self, mut config_file_data: ConfigFileData) {
+        self.config_file_id_count += 1;
+        let id = self.config_file_id_count;
+        self.selected_config_file_id = id;
 
-        CollapsingHeader::new("mode")
-            .id_source("config mode")
-            .default_open(true)
+        config_file_data.id = id;
+
+        self.config_files.insert(id, config_file_data);
+        self.dnd_items.push(DndItem { id });
+    }
+
+    fn del_config_file(&mut self) {
+        if self.config_files.len() < 2 {
+            return;
+        }
+
+        let remove_id = self.selected_config_file_id;
+
+        if let Some(id) = self.connected_config_file_id {
+            if id == remove_id {
+                return;
+            }
+        }
+
+        let _ = self.config_files.remove(&remove_id);
+
+        let mut del_index = None;
+        for (i, di) in self.dnd_items.iter().enumerate() {
+            if di.id == remove_id {
+                del_index = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = del_index {
+            self.dnd_items.remove(i);
+        }
+    }
+
+    pub fn connected(&self) -> bool {
+        self.connected_config_file_id.is_some()
+    }
+
+    pub fn set_connected(&mut self, connected_id: Option<u64>) {
+        self.connected_config_file_id = connected_id;
+    }
+
+    pub fn set_connect_result(&mut self, r: Result<u64, (u64, String)>) {
+        match r {
+            Ok(id) => {
+                self.connected_config_file_id = Some(id);
+                if let Some(cf) = self.config_files.get_mut(&id) {
+                    cf.err_str = None;
+                }
+            }
+            Err((id, s)) => {
+                self.connected_config_file_id = None;
+                if let Some(cf) = self.config_files.get_mut(&id) {
+                    cf.err_str = Some(s);
+                }
+            }
+        }
+    }
+
+    fn show_config_file_list(&mut self, ui: &mut Ui) {
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            if ui.button(RichText::new(" + ").code()).clicked() {
+                let mut dialog = FileDialog::open_file(None)
+                    .show_new_folder(false)
+                    .show_rename(false);
+                dialog.open();
+                self.file_dialog = Some(dialog);
+            }
+
+            if ui.button(RichText::new(" - ").code()).clicked() {
+                self.del_config_file();
+            }
+        });
+
+        ui.add_space(10.0);
+
+        ScrollArea::both()
+            .max_width(200.0)
+            .auto_shrink([true, false])
             .show(ui, |ui| {
-                let mode_select_str = match self.zenoh_config.mode() {
-                    None => "",
-                    Some(m) => m.to_str(),
-                };
-                egui::ComboBox::new("mode", "")
-                    .selected_text(mode_select_str)
-                    .show_ui(ui, |ui| {
-                        let what_am_i = [WhatAmI::Client, WhatAmI::Peer];
-                        for wai in what_am_i {
-                            if ui
-                                .selectable_label(
-                                    self.zenoh_config.mode() == &Some(wai),
-                                    wai.to_str(),
-                                )
-                                .clicked()
-                            {
-                                let _ = self.zenoh_config.set_mode(Some(wai));
-                            }
+                dnd(ui, "page_session_config_list").show_vec(
+                    self.dnd_items.as_mut_slice(),
+                    |ui, item, handle, _state| {
+                        if let Some(d) = self.config_files.get(&item.id) {
+                            let text = if let Some(id) = self.connected_config_file_id {
+                                if id == item.id {
+                                    RichText::new(d.name.as_str()).underline().strong()
+                                } else {
+                                    RichText::new(d.name.as_str())
+                                }
+                            } else {
+                                RichText::new(d.name.as_str())
+                            };
+
+                            handle.ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.selected_config_file_id,
+                                    item.id,
+                                    text,
+                                );
+                            });
                         }
-                    });
-            });
-
-        CollapsingHeader::new("connect")
-            .id_source("config connect")
-            .default_open(true)
-            .show(ui, |ui| {
-                if ui.button(rt_add.clone()).clicked() {
-                    self.show_add_endpoint_window = true;
-                    self.add_endpoint_window.kind = AEWKind::Connect;
-                }
-
-                let mut remove_index: Option<usize> = None;
-                let mut index = 0;
-                for ed in &self.zenoh_config.connect.endpoints {
-                    ui.horizontal(|ui| {
-                        if ui.button(rt_del.clone()).clicked() {
-                            remove_index = Some(index);
-                        }
-                        let rt = RichText::new(format!("{}", ed)).monospace();
-                        ui.label(rt);
-                    });
-                    index += 1;
-                }
-
-                if let Some(i) = remove_index {
-                    let _ = self.zenoh_config.connect.endpoints.remove(i);
-                }
-            });
-
-        CollapsingHeader::new("listen")
-            .id_source("config listen")
-            .default_open(true)
-            .show(ui, |ui| {
-                if ui.button(rt_add.clone()).clicked() {
-                    self.show_add_endpoint_window = true;
-                    self.add_endpoint_window.kind = AEWKind::Listen;
-                }
-
-                let mut remove_index: Option<usize> = None;
-                let mut index = 0;
-                for ed in &self.zenoh_config.listen.endpoints {
-                    ui.horizontal(|ui| {
-                        if ui.button(rt_del.clone()).clicked() {
-                            remove_index = Some(index);
-                        }
-                        let rt = RichText::new(format!("{}", ed)).monospace();
-                        ui.label(rt);
-                    });
-                    index += 1;
-                }
-                if let Some(i) = remove_index {
-                    let _ = self.zenoh_config.listen.endpoints.remove(i);
-                }
+                    },
+                );
             });
     }
+
+    fn clean_all_config_file_data(&mut self) {
+        self.selected_config_file_id = 0;
+        self.config_files.clear();
+    }
+}
+
+#[derive(Hash)]
+struct DndItem {
+    id: u64,
+}
+
+#[derive(Eq, PartialEq, Copy, Clone)]
+enum FilePage {
+    Source,
+    Format,
+    Tree,
 }
