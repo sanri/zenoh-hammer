@@ -19,7 +19,7 @@ use std::{
 use strum::EnumCount;
 use zenoh::{
     bytes::{Encoding, ZBytes},
-    internal::{buffers::ZSlice, Value},
+    internal::buffers::ZSlice,
 };
 
 use crate::{hex_viewer::HexViewer, zenoh_data::KnownEncoding};
@@ -132,7 +132,7 @@ impl PayloadEdit {
         }
     }
 
-    pub fn get_zenoh_value(&mut self) -> Option<Value> {
+    pub fn get_zenoh_value(&mut self) -> Option<(Encoding, ZBytes)> {
         let payload: Option<ZBytes> = match KnownEncoding::from(self.encoding_id) {
             KnownEncoding::ZBytes => self.get_binary_zbytes(),
             KnownEncoding::ZString => self.get_string_zbytes(),
@@ -197,7 +197,7 @@ impl PayloadEdit {
                 Some(self.encoding_schema.as_bytes().to_vec().into())
             };
             let encoding = Encoding::new(self.encoding_id, encoding_schema);
-            Some(Value::new(zbytes, encoding))
+            Some((encoding, zbytes))
         } else {
             None
         }
