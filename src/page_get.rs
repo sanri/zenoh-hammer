@@ -1,3 +1,9 @@
+use crate::{
+    payload_editor::{ArchivePayloadEdit, PayloadEdit},
+    reply_viewer::ReplyViewer,
+    task_zenoh::QueryData,
+    zenoh_data::{zenoh_value_abstract, ZConsolidation, ZLocality, ZQueryTarget},
+};
 use eframe::egui::{
     Align, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, DragValue, Grid, Id, Layout,
     RichText, ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Widget, Window,
@@ -11,14 +17,8 @@ use std::{
     time::Duration,
 };
 use strum::IntoEnumIterator;
-use zenoh::{bytes::ZBytes, internal::Value, key_expr::OwnedKeyExpr, query::Reply};
-
-use crate::{
-    payload_editor::{ArchivePayloadEdit, PayloadEdit},
-    reply_viewer::ReplyViewer,
-    task_zenoh::QueryData,
-    zenoh_data::{zenoh_value_abstract, ZConsolidation, ZLocality, ZQueryTarget},
-};
+use zenoh::bytes::Encoding;
+use zenoh::{bytes::ZBytes, key_expr::OwnedKeyExpr, query::Reply};
 
 // query
 pub enum Event {
@@ -386,7 +386,7 @@ impl PageGetData {
             }
         };
 
-        let value: Option<Value> = if self.payload {
+        let value: Option<(Encoding, ZBytes)> = if self.payload {
             self.payload_edit.get_zenoh_value()
         } else {
             None

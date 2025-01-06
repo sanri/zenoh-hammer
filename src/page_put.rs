@@ -227,7 +227,7 @@ impl PagePutData {
             }
         };
 
-        let z_value = match self.payload_edit.get_zenoh_value() {
+        let (encoding, payload) = match self.payload_edit.get_zenoh_value() {
             None => {
                 return;
             }
@@ -239,8 +239,8 @@ impl PagePutData {
             key,
             congestion_control: self.selected_congestion_control.into(),
             priority: self.selected_priority.into(),
-            encoding: z_value.encoding,
-            payload: z_value.payload,
+            encoding,
+            payload,
         };
         events.push_back(Event::Put(Box::new(put_data)));
         self.info = None;

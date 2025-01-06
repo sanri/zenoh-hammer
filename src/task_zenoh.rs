@@ -10,7 +10,6 @@ use tokio::{runtime::Runtime, select, task, time::sleep};
 use zenoh::{
     bytes::{Encoding, ZBytes},
     handlers::FifoChannelHandler,
-    internal::Value,
     key_expr::OwnedKeyExpr,
     pubsub::Subscriber,
     qos::{CongestionControl, Priority},
@@ -39,7 +38,7 @@ pub struct QueryData {
     pub consolidation: QueryConsolidation,
     pub locality: Locality,
     pub timeout: Duration,
-    pub value: Option<Value>,
+    pub value: Option<(Encoding, ZBytes)>,
 }
 
 pub enum MsgGuiToZenoh {
@@ -227,10 +226,7 @@ async fn task_query(session: Session, data: Box<QueryData>, sender_to_gui: Sende
     let key_expr_str = d.key_expr.to_string();
     info!("task_query entry, key expr \"{}\"", key_expr_str);
     let replies = match d.value {
-        Some(v) => session
-            .get(d.key_expr)
-            .payload(v.payload)
-            .encoding(v.encoding),
+        Some((encoding, payload)) => session.get(d.key_expr).payload(payload).encoding(encoding),
         None => session.get(d.key_expr),
     }
     .attachment(d.attachment)
