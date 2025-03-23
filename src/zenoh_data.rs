@@ -309,12 +309,13 @@ impl Into<QueryConsolidation> for ZConsolidation {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq, AsRefStr)]
+#[derive(Serialize, Deserialize, Clone, Copy, EnumIter, Eq, PartialEq, AsRefStr, Default)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZLocality {
     SessionLocal,
     Remote,
+    #[default]
     Any,
 }
 

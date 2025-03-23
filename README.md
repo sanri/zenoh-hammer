@@ -18,7 +18,7 @@ The functionality provided is similar to the zenoh command line tools z_sub, z_p
 
 
 ## Features
-- Support Zenoh V1.0
+- Support Zenoh V1.3
 - Support sending, receiving, and viewing multiple types of data.
   - text
   - binary
