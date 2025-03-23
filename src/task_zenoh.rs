@@ -21,6 +21,12 @@ use zenoh::{
 pub type Sender<T> = flume::Sender<T>;
 pub type Receiver<T> = flume::Receiver<T>;
 
+pub struct SubData {
+    pub id: u64,
+    pub key_expr: OwnedKeyExpr,
+    pub origin: Locality,
+}
+
 pub struct PutData {
     pub id: u64,
     pub key: OwnedKeyExpr,
@@ -43,8 +49,8 @@ pub struct QueryData {
 
 pub enum MsgGuiToZenoh {
     Close,
-    AddSubReq(Box<(u64, OwnedKeyExpr)>), // (sub id,key)
-    DelSubReq(u64),                      // sub id
+    AddSubReq(Box<SubData>), // (sub id,key)
+    DelSubReq(u64),          // sub id
     GetReq(Box<QueryData>),
     PutReq(Box<PutData>),
 }
@@ -128,16 +134,23 @@ async fn loop_zenoh(
                 break 'a;
             }
             MsgGuiToZenoh::AddSubReq(req) => {
-                let (id, key_expr) = *req;
-                let subscriber: Subscriber<FifoChannelHandler<Sample>> =
-                    match session.declare_subscriber(key_expr).await {
-                        Ok(o) => o,
-                        Err(e) => {
-                            let _ = sender_to_gui
-                                .send(MsgZenohToGui::AddSubRes(Box::new((id, Err(e.to_string())))));
-                            return;
-                        }
-                    };
+                let SubData {
+                    id,
+                    key_expr,
+                    origin,
+                } = *req;
+                let subscriber: Subscriber<FifoChannelHandler<Sample>> = match session
+                    .declare_subscriber(key_expr)
+                    .allowed_origin(origin)
+                    .await
+                {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let _ = sender_to_gui
+                            .send(MsgZenohToGui::AddSubRes(Box::new((id, Err(e.to_string())))));
+                        return;
+                    }
+                };
                 let (close_sender, close_receiver): (Sender<()>, Receiver<()>) = unbounded();
                 let _ = subscriber_senders.insert(id, close_sender);
                 task::spawn(task_subscriber(

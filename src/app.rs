@@ -366,7 +366,7 @@ impl HammerApp {
                     if let Some(sender) = &self.sender_to_zenoh {
                         let _ = sender.send(MsgGuiToZenoh::AddSubReq(event));
                     } else {
-                        let id = (*event).0;
+                        let id = (*event).id;
                         self.p_sub
                             .processing_add_sub_res(id, Err("not connected".to_string()));
                     }

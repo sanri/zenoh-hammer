@@ -1,7 +1,7 @@
 use arboard::Clipboard;
 use eframe::egui::{
-    Align, CentralPanel, CollapsingHeader, Color32, Context, DragValue, Grid, Id, Layout, RichText,
-    ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Window,
+    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, DragValue, Grid, Id, Layout,
+    RichText, ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Window,
 };
 use egui_dnd::dnd;
 use egui_extras::{Column, TableBody, TableBuilder};
@@ -13,21 +13,27 @@ use std::{
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use strum::IntoEnumIterator;
 use zenoh::{key_expr::OwnedKeyExpr, sample::Sample};
 
-use crate::{sample_viewer::SampleViewer, zenoh_data::zenoh_value_abstract};
+use crate::{
+    sample_viewer::SampleViewer,
+    task_zenoh::SubData,
+    zenoh_data::{zenoh_value_abstract, ZLocality},
+};
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
 
 pub enum Event {
-    AddSub(Box<(u64, OwnedKeyExpr)>), // id, key expr
-    DelSub(u64),                      // id
+    AddSub(Box<SubData>), // id, key expr
+    DelSub(u64),          // id
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ArchivePageSubData {
     name: String,
     key_expr: String,
+    origin: ZLocality,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -56,7 +62,11 @@ impl Default for PageSub {
             sub_data_group: BTreeMap::new(),
             dnd_items: Vec::new(),
         };
-        p.add_sub_data(PageSubData::new("demo".to_string(), "demo/**".to_string()));
+        p.add_sub_data(PageSubData::new(
+            "demo".to_string(),
+            "demo/**".to_string(),
+            ZLocality::default(),
+        ));
         p
     }
 }
@@ -172,7 +182,11 @@ impl PageSub {
                 if let Some(d) = self.sub_data_group.get(&self.selected_sub_id) {
                     self.add_sub_data(PageSubData::from(d));
                 } else {
-                    self.add_sub_data(PageSubData::new(format!("demo"), format!("demo/**")));
+                    self.add_sub_data(PageSubData::new(
+                        "demo".to_string(),
+                        "demo/**".to_string(),
+                        ZLocality::default(),
+                    ));
                 }
             }
 
@@ -231,7 +245,7 @@ impl PageSub {
                                 data_group.key_expr.replace(&[' ', '\t', '\n', '\r'], "");
 
                             if key_expr_str.is_empty() {
-                                let rt = format!("key expr is empty");
+                                let rt = "key expr is empty".to_string();
                                 data_group.err_str = Some(rt);
                                 return;
                             }
@@ -245,8 +259,13 @@ impl PageSub {
                                     }
                                 };
 
-                            self.events
-                                .push_back(Event::AddSub(Box::new((self.selected_sub_id, key))));
+                            let sub_data = SubData {
+                                id: self.selected_sub_id,
+                                key_expr: key,
+                                origin: data_group.selected_origin.into(),
+                            };
+
+                            self.events.push_back(Event::AddSub(Box::new(sub_data)));
                         } else {
                             self.events.push_back(Event::DelSub(self.selected_sub_id));
                         }
@@ -260,7 +279,6 @@ impl PageSub {
                         .interactive(!data_group.subscribed);
                     ui.add(te);
                 });
-
                 ui.end_row();
 
                 ui.label("key expr:");
@@ -272,7 +290,20 @@ impl PageSub {
                         .interactive(!data_group.subscribed);
                     ui.add(te);
                 });
+                ui.end_row();
 
+                ui.label("allowed origin:");
+                ComboBox::new("selected_origin", "")
+                    .selected_text(data_group.selected_origin.as_ref())
+                    .show_ui(ui, |ui| {
+                        for option in ZLocality::iter() {
+                            ui.selectable_value(
+                                &mut data_group.selected_origin,
+                                option,
+                                option.as_ref(),
+                            );
+                        }
+                    });
                 ui.end_row();
             });
 
@@ -596,6 +627,7 @@ pub struct PageSubData {
     key_expr: String,
     err_str: Option<String>,
     selected_key: String,
+    selected_origin: ZLocality,
     filtered: bool,
     filter_str: String,
     buffer_size_tmp: u32,
@@ -606,7 +638,11 @@ pub struct PageSubData {
 
 impl From<&PageSubData> for PageSubData {
     fn from(value: &PageSubData) -> Self {
-        PageSubData::new(value.name.clone(), value.key_expr.clone())
+        PageSubData::new(
+            value.name.clone(),
+            value.key_expr.clone(),
+            value.selected_origin,
+        )
     }
 }
 
@@ -615,6 +651,7 @@ impl From<&PageSubData> for ArchivePageSubData {
         ArchivePageSubData {
             name: value.name.clone(),
             key_expr: value.key_expr.clone(),
+            origin: value.selected_origin,
         }
     }
 }
@@ -623,7 +660,11 @@ impl TryFrom<&ArchivePageSubData> for PageSubData {
     type Error = String;
 
     fn try_from(value: &ArchivePageSubData) -> Result<Self, Self::Error> {
-        Ok(PageSubData::new(value.name.clone(), value.key_expr.clone()))
+        Ok(PageSubData::new(
+            value.name.clone(),
+            value.key_expr.clone(),
+            value.origin,
+        ))
     }
 }
 
@@ -631,18 +672,19 @@ impl TryFrom<ArchivePageSubData> for PageSubData {
     type Error = String;
 
     fn try_from(value: ArchivePageSubData) -> Result<Self, Self::Error> {
-        Ok(PageSubData::new(value.name, value.key_expr))
+        Ok(PageSubData::new(value.name, value.key_expr, value.origin))
     }
 }
 
 impl PageSubData {
-    fn new(name: String, key_expr: String) -> PageSubData {
+    fn new(name: String, key_expr: String, origin: ZLocality) -> PageSubData {
         PageSubData {
             subscribed: false,
             name,
             key_expr,
             err_str: None,
             selected_key: "".to_string(),
+            selected_origin: origin,
             filtered: false,
             filter_str: "".to_string(),
             buffer_size_tmp: VALUE_BUFFER_SIZE_DEFAULT as u32,
