@@ -7,6 +7,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::{runtime::Runtime, select, task, time::sleep};
+use zenoh::query::{Parameters, Selector};
 use zenoh::{
     bytes::{Encoding, ZBytes},
     handlers::FifoChannelHandler,
@@ -39,6 +40,7 @@ pub struct PutData {
 pub struct QueryData {
     pub id: u64,
     pub key_expr: OwnedKeyExpr,
+    pub parameters: Parameters<'static>,
     pub attachment: Option<ZBytes>,
     pub target: QueryTarget,
     pub consolidation: QueryConsolidation,
@@ -238,9 +240,11 @@ async fn task_query(session: Session, data: Box<QueryData>, sender_to_gui: Sende
     let d = *data;
     let key_expr_str = d.key_expr.to_string();
     info!("task_query entry, key expr \"{}\"", key_expr_str);
+
+    let selector = Selector::from((d.key_expr, d.parameters));
     let replies = match d.value {
-        Some((encoding, payload)) => session.get(d.key_expr).payload(payload).encoding(encoding),
-        None => session.get(d.key_expr),
+        Some((encoding, payload)) => session.get(selector).payload(payload).encoding(encoding),
+        None => session.get(selector),
     }
     .attachment(d.attachment)
     .target(d.target)

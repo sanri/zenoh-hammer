@@ -7,10 +7,11 @@ use eframe::{
     Frame,
 };
 use egui_file::{DialogType, FileDialog};
+use env_logger::init_from_env;
 use flume::{unbounded, TryRecvError};
-use log::{info, warn};
+use log::{error, info, warn};
 use static_toml::static_toml;
-use std::{path::PathBuf, time::Duration};
+use std::{fs, path::PathBuf, time::Duration};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -41,6 +42,7 @@ pub enum Page {
 }
 
 pub struct HammerApp {
+    app_config_path: Option<PathBuf>,
     sender_to_zenoh: Option<Sender<MsgGuiToZenoh>>,
     receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
     opened_file: Option<PathBuf>,
@@ -58,6 +60,7 @@ impl Default for HammerApp {
         HammerApp {
             sender_to_zenoh: None,
             receiver_from_zenoh: None,
+            app_config_path: None,
             opened_file: None,
             file_dialog: None,
             show_about: false,
@@ -83,6 +86,14 @@ impl eframe::App for HammerApp {
 }
 
 impl HammerApp {
+    pub fn set_app_config_path(&mut self, app_config_path: PathBuf) {
+        self.app_config_path = Some(app_config_path);
+    }
+
+    pub fn set_opened_file(&mut self, opened_file: PathBuf) {
+        self.opened_file = Some(opened_file);
+    }
+
     fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
         TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -114,8 +125,9 @@ impl HammerApp {
                     DialogType::OpenFile => {
                         if let Some(file) = dialog.path() {
                             let file = file.to_path_buf();
-                            match self.load_from_file(file) {
+                            match self.load_from_file(file.clone()) {
                                 Ok(o) => {
+                                    self.write_last_opened_file_path(file);
                                     info!("{}", o);
                                 }
                                 Err(e) => {
@@ -127,7 +139,19 @@ impl HammerApp {
                     DialogType::SaveFile => {
                         if let Some(file) = dialog.path() {
                             let file = file.to_path_buf();
-                            self.store_to_file(file);
+                            match self.store_to_file(file.clone()) {
+                                Ok(_) => {
+                                    info!("save file: {}", file.to_string_lossy());
+                                    self.write_last_opened_file_path(file);
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "save file err, path: {} \n{}",
+                                        file.to_string_lossy(),
+                                        e
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -156,7 +180,14 @@ impl HammerApp {
 
             if ui.add(Button::new("save")).clicked() {
                 if let Some(p) = self.opened_file.clone() {
-                    self.store_to_file(p);
+                    match self.store_to_file(p.clone()) {
+                        Ok(_) => {
+                            info!("save file: {}", p.to_string_lossy());
+                        }
+                        Err(e) => {
+                            warn!("save file err, path: {} \n{}", p.to_string_lossy(), e);
+                        }
+                    }
                 } else {
                     let mut dialog = FileDialog::save_file(self.opened_file.clone())
                         .show_new_folder(true)
@@ -227,7 +258,18 @@ impl HammerApp {
         });
     }
 
-    fn load_from_file(&mut self, path: PathBuf) -> Result<String, String> {
+    fn write_last_opened_file_path(&mut self, opened_file_path: PathBuf) {
+        if let Some(acp) = &self.app_config_path {
+            let ofp_str = opened_file_path.to_string_lossy().to_string();
+            if let Err(e) = fs::write(acp.as_path(), ofp_str) {
+                error!("write default config file error. {}", e);
+            } else {
+                info!("write default config file successfully.");
+            }
+        }
+    }
+
+    pub fn load_from_file(&mut self, path: PathBuf) -> Result<String, String> {
         match ArchiveApp::load(path.as_path()) {
             Ok(o) => {
                 let s = format!("load file ok, path: {}", path.to_str().unwrap_or_default());
@@ -246,16 +288,14 @@ impl HammerApp {
         }
     }
 
-    fn store_to_file(&mut self, path: PathBuf) {
+    fn store_to_file(&mut self, path: PathBuf) -> Result<(), String> {
         let asd = self.generate_archive();
         match asd.write(path.as_path()) {
             Ok(_) => {
-                info!("save file: {}", path.to_str().unwrap());
                 self.opened_file = Some(path);
+                Ok(())
             }
-            Err(e) => {
-                warn!("save file err, path: {} \n{}", path.to_str().unwrap(), e);
-            }
+            Err(e) => Err(e.to_string()),
         }
     }
 

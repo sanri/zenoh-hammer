@@ -18,6 +18,7 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use zenoh::bytes::Encoding;
+use zenoh::query::Parameters;
 use zenoh::{bytes::ZBytes, key_expr::OwnedKeyExpr, query::Reply};
 
 // query
@@ -29,6 +30,7 @@ pub enum Event {
 pub struct ArchivePageGetData {
     name: String,
     key: String,
+    parameters: String,
     attachment: String,
     target: ZQueryTarget,
     consolidation: ZConsolidation,
@@ -47,6 +49,7 @@ pub struct PageGetData {
     id: u64,
     name: String,
     input_key: String,
+    input_parameters: String,
     input_attachment: String,
     selected_target: ZQueryTarget,
     selected_consolidation: ZConsolidation,
@@ -64,6 +67,7 @@ impl Default for PageGetData {
             id: 1,
             name: "demo".to_string(),
             input_key: "demo/test".to_string(),
+            input_parameters: String::new(),
             input_attachment: String::new(),
             selected_target: ZQueryTarget::BestMatching,
             selected_consolidation: ZConsolidation::Auto,
@@ -83,6 +87,7 @@ impl From<&PageGetData> for PageGetData {
             id: 0,
             name: value.name.clone(),
             input_key: value.input_key.clone(),
+            input_parameters: value.input_parameters.clone(),
             input_attachment: value.input_attachment.clone(),
             selected_target: value.selected_target,
             selected_consolidation: value.selected_consolidation,
@@ -101,6 +106,7 @@ impl From<&PageGetData> for ArchivePageGetData {
         ArchivePageGetData {
             name: value.name.clone(),
             key: value.input_key.clone(),
+            parameters: value.input_parameters.clone(),
             attachment: value.input_attachment.clone(),
             target: value.selected_target,
             consolidation: value.selected_consolidation,
@@ -120,6 +126,7 @@ impl TryFrom<&ArchivePageGetData> for PageGetData {
             id: 0,
             name: value.name.clone(),
             input_key: value.key.clone(),
+            input_parameters: value.parameters.clone(),
             input_attachment: value.attachment.clone(),
             selected_target: value.target,
             selected_consolidation: value.consolidation,
@@ -141,6 +148,7 @@ impl TryFrom<ArchivePageGetData> for PageGetData {
             id: 0,
             name: value.name,
             input_key: value.key,
+            input_parameters: value.parameters,
             input_attachment: value.attachment,
             selected_target: value.target,
             selected_consolidation: value.consolidation,
@@ -162,7 +170,8 @@ impl PageGetData {
         show_window: &mut bool,
         reply_window: &mut ReplyViewer,
     ) {
-        self.show_name_key_attachment(ui, events);
+        self.show_name_key_parameters_attachment(ui, events);
+
         ScrollArea::horizontal()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -173,7 +182,7 @@ impl PageGetData {
             });
     }
 
-    fn show_name_key_attachment(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
+    fn show_name_key_parameters_attachment(&mut self, ui: &mut Ui, events: &mut VecDeque<Event>) {
         let mut input_grid = |ui: &mut Ui| {
             ui.label("name:");
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -189,6 +198,14 @@ impl PageGetData {
 
             ui.label("key:");
             TextEdit::multiline(&mut self.input_key)
+                .desired_rows(1)
+                .desired_width(3000.0)
+                .font(TextStyle::Monospace)
+                .ui(ui);
+            ui.end_row();
+
+            ui.label("parameters:").on_hover_text("arg1=val1&arg2=val2");
+            TextEdit::multiline(&mut self.input_parameters)
                 .desired_rows(1)
                 .desired_width(3000.0)
                 .font(TextStyle::Monospace)
@@ -377,7 +394,7 @@ impl PageGetData {
     fn send(&mut self, events: &mut VecDeque<Event>) {
         self.replies.clear();
         let key_str = self.input_key.replace(&[' ', '\t', '\n', '\r'], "");
-        let key: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_str.as_str()) {
+        let key_expr: OwnedKeyExpr = match OwnedKeyExpr::from_str(key_str.as_str()) {
             Ok(o) => o,
             Err(e) => {
                 let rt = RichText::new(format!("{}", e)).color(Color32::RED);
@@ -385,6 +402,8 @@ impl PageGetData {
                 return;
             }
         };
+
+        let parameters: Parameters = Parameters::from(self.input_parameters.clone());
 
         let value: Option<(Encoding, ZBytes)> = if self.payload {
             self.payload_edit.get_zenoh_value()
@@ -400,7 +419,8 @@ impl PageGetData {
 
         let d = QueryData {
             id: self.id,
-            key_expr: key,
+            key_expr,
+            parameters,
             attachment,
             target: self.selected_target.into(),
             consolidation: self.selected_consolidation.into(),
