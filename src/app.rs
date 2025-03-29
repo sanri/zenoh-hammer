@@ -7,11 +7,14 @@ use eframe::{
     Frame,
 };
 use egui_file::{DialogType, FileDialog};
-use env_logger::init_from_env;
 use flume::{unbounded, TryRecvError};
 use log::{error, info, warn};
 use static_toml::static_toml;
-use std::{fs, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -125,9 +128,9 @@ impl HammerApp {
                     DialogType::OpenFile => {
                         if let Some(file) = dialog.path() {
                             let file = file.to_path_buf();
-                            match self.load_from_file(file.clone()) {
+                            match self.load_from_file(file.as_path()) {
                                 Ok(o) => {
-                                    self.write_last_opened_file_path(file);
+                                    self.write_last_opened_file_path(file.as_path());
                                     info!("{}", o);
                                 }
                                 Err(e) => {
@@ -139,10 +142,10 @@ impl HammerApp {
                     DialogType::SaveFile => {
                         if let Some(file) = dialog.path() {
                             let file = file.to_path_buf();
-                            match self.store_to_file(file.clone()) {
+                            match self.store_to_file(file.as_path()) {
                                 Ok(_) => {
                                     info!("save file: {}", file.to_string_lossy());
-                                    self.write_last_opened_file_path(file);
+                                    self.write_last_opened_file_path(file.as_path());
                                 }
                                 Err(e) => {
                                     warn!(
@@ -180,7 +183,7 @@ impl HammerApp {
 
             if ui.add(Button::new("save")).clicked() {
                 if let Some(p) = self.opened_file.clone() {
-                    match self.store_to_file(p.clone()) {
+                    match self.store_to_file(p.as_path()) {
                         Ok(_) => {
                             info!("save file: {}", p.to_string_lossy());
                         }
@@ -258,10 +261,17 @@ impl HammerApp {
         });
     }
 
-    fn write_last_opened_file_path(&mut self, opened_file_path: PathBuf) {
+    fn write_last_opened_file_path(&mut self, opened_file_path: &Path) {
         if let Some(acp) = &self.app_config_path {
-            let ofp_str = opened_file_path.to_string_lossy().to_string();
-            if let Err(e) = fs::write(acp.as_path(), ofp_str) {
+            let ofp_str = match opened_file_path.canonicalize() {
+                Ok(o) => o.to_string_lossy().to_string(),
+                Err(e) => {
+                    error!("write default config file error. {}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = fs::write(acp.as_path(), ofp_str.as_bytes()) {
                 error!("write default config file error. {}", e);
             } else {
                 info!("write default config file successfully.");
@@ -269,30 +279,26 @@ impl HammerApp {
         }
     }
 
-    pub fn load_from_file(&mut self, path: PathBuf) -> Result<String, String> {
-        match ArchiveApp::load(path.as_path()) {
+    pub fn load_from_file(&mut self, path: &Path) -> Result<String, String> {
+        match ArchiveApp::load(path) {
             Ok(o) => {
-                let s = format!("load file ok, path: {}", path.to_str().unwrap_or_default());
+                let s = format!("load file ok, path: {}", path.to_string_lossy());
                 self.load(o)?;
-                self.opened_file = Some(path);
+                self.opened_file = Some(path.to_path_buf());
                 Ok(s)
             }
             Err(e) => {
-                let s = format!(
-                    "load file err, path: {} \n{}",
-                    path.to_str().unwrap_or_default(),
-                    e
-                );
+                let s = format!("load file err, path: {} \n{}", path.to_string_lossy(), e);
                 Err(s)
             }
         }
     }
 
-    fn store_to_file(&mut self, path: PathBuf) -> Result<(), String> {
+    fn store_to_file(&mut self, path: &Path) -> Result<(), String> {
         let asd = self.generate_archive();
-        match asd.write(path.as_path()) {
+        match asd.write(path) {
             Ok(_) => {
-                self.opened_file = Some(path);
+                self.opened_file = Some(path.to_path_buf());
                 Ok(())
             }
             Err(e) => Err(e.to_string()),

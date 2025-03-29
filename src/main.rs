@@ -13,20 +13,20 @@ mod sample_viewer;
 mod task_zenoh;
 mod zenoh_data;
 
-use crate::{app::HammerApp, language::load_fonts};
 use directories::ProjectDirs;
 use eframe::{
     egui::ViewportBuilder, icon_data::from_png_bytes, AppCreator, HardwareAcceleration,
     NativeOptions,
 };
 use env_logger::Env;
-use image::imageops::index_colors;
 use log::{info, warn};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+use crate::{app::HammerApp, language::load_fonts};
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("zenoh_hammer=info")).init();
@@ -52,7 +52,7 @@ fn main() {
     }
 
     if let Some(last_opened_file) = lof {
-        match hammer_app.load_from_file(last_opened_file.clone()) {
+        match hammer_app.load_from_file(last_opened_file.as_path()) {
             Ok(o) => {
                 info!("{}", o);
                 hammer_app.set_opened_file(last_opened_file);

@@ -346,7 +346,9 @@ impl PageSession {
                     }
                     DialogType::OpenFile => {
                         if let Some(p) = dialog.path() {
-                            open_file_path = Some(p.to_owned());
+                            if let Ok(o) = p.canonicalize() {
+                                open_file_path = Some(o);
+                            }
                         }
                     }
                 }
