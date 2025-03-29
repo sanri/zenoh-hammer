@@ -1,6 +1,6 @@
 [package]
 name = "zenoh-hammer"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 
 [[example]]
@@ -21,6 +21,7 @@ lto = true
 
 [dependencies]
 arboard = { version = "3.4" }
+directories = { version = "5.0" }
 eframe = { version = "0.31", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
 egui_dnd = { version = "0.12" }
 egui_extras = { version = "0.31" }
