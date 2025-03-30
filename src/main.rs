@@ -73,44 +73,48 @@ fn main() {
 // 获取一个可读写的配置文件路径, 并读取最后一次打开文件的路径
 // (app_config_path, last_opened_file)
 fn get_acp_lof() -> (Option<PathBuf>, Option<PathBuf>) {
-    if let Some((acd, acp)) = app_config_path() {
-        let acp_str = acp.to_string_lossy();
+    if let Some((add, adp)) = app_data_path() {
+        let adp_str = adp.to_string_lossy();
+        let add_str = add.to_string_lossy();
+        let file_name_str = adp
+            .file_name()
+            .map_or(String::new(), |name| name.to_string_lossy().to_string());
 
-        if let Some(lof) = read_last_opened_file(acp.as_path()) {
+        if let Some(lof) = read_last_opened_file(adp.as_path()) {
             let lof_str = lof.to_string_lossy();
-            if fs::write(acp.as_path(), lof_str.as_bytes()).is_ok() {
-                info!("Default config file: {}", acp_str);
-                (Some(acp), Some(lof))
+            if fs::write(adp.as_path(), lof_str.as_bytes()).is_ok() {
+                info!("app data dir: \"{}\"", add_str);
+                info!("app data file: \"{}\"", file_name_str);
+                (Some(adp), Some(lof))
             } else {
-                warn!("default config file are not writable. \"{acp_str}\"");
+                warn!("app data file are not writable. \"{adp_str}\"");
                 (None, Some(lof))
             }
         } else {
-            if fs::create_dir_all(acd.as_path()).is_err() {
-                let acd_str = acd.to_string_lossy();
-                warn!("the default config dir could not be created. \"{acd_str}\"");
+            if fs::create_dir_all(add.as_path()).is_err() {
+                warn!("the app data dir could not be created. \"{add_str}\"");
                 return (None, None);
             }
 
-            if fs::write(acp.as_path(), "    ").is_err() {
-                warn!("default config file is not writable. \"{acp_str}\"");
+            if fs::write(adp.as_path(), "    ").is_err() {
+                warn!("app data file is not writable. \"{adp_str}\"");
                 return (None, None);
             }
 
-            info!("default config file is created: {}", acp_str);
-            (Some(acp), None)
+            info!("app data file is created. \"{}\"", adp_str);
+            (Some(adp), None)
         }
     } else {
         (None, None)
     }
 }
 
-fn app_config_path() -> Option<(PathBuf, PathBuf)> {
-    if let Some(proj_dir) = ProjectDirs::from("", "", "zenoh-hammer") {
-        let acd = proj_dir.config_dir().to_path_buf();
-        let mut acp = acd.clone();
-        acp.push("last_opened_file");
-        Some((acd, acp))
+fn app_data_path() -> Option<(PathBuf, PathBuf)> {
+    if let Some(proj_dir) = ProjectDirs::from("", "", "Zenoh Hammer") {
+        let add = proj_dir.data_dir().to_path_buf();
+        let mut adp = add.clone();
+        adp.push("last_opened_file");
+        Some((add, adp))
     } else {
         None
     }
