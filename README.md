@@ -26,6 +26,12 @@ The functionality provided is similar to the zenoh command line tools z_sub, z_p
 - Message content can be viewed with a hexadecimal viewer.
 - The configuration data in the software interface can be saved as a file.
 
+## Run
+To use on Linux, first run:
+
+```shell
+sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+```
 
 ## Build
 

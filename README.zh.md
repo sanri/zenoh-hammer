@@ -24,6 +24,13 @@ Zenoh的图形界面工具.
 - 可用十六进制查看器查看消息内容
 - 可将软件界面内的配置数据保存为文件
 
+## 运行
+在Linux上运行, 需要
+
+```shell
+sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+```
+
 ## 编译
 
 克隆仓库后, 直接在项目主目录下运行命令
