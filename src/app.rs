@@ -178,7 +178,6 @@ impl HammerApp {
                     .show_rename(false);
                 dialog.open();
                 self.file_dialog = Some(dialog);
-                ui.close_kind(UiKind::Menu);
             }
 
             if ui.add(Button::new("save")).clicked() {
@@ -198,7 +197,6 @@ impl HammerApp {
                     dialog.open();
                     self.file_dialog = Some(dialog);
                 }
-                ui.close_kind(UiKind::Menu);
             }
 
             if ui.add(Button::new("save as ..")).clicked() {
@@ -207,8 +205,6 @@ impl HammerApp {
                     .show_rename(true);
                 dialog.open();
                 self.file_dialog = Some(dialog);
-
-                ui.close_kind(UiKind::Menu);
             }
         });
 
@@ -219,7 +215,6 @@ impl HammerApp {
 
             if ui.add(Button::new("about")).clicked() {
                 self.show_help_about = true;
-                ui.close_kind(UiKind::Menu);
             }
 
             ui.menu_button("zoom", |ui| {
