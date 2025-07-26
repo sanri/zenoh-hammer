@@ -430,7 +430,11 @@ impl PageSession {
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
-            if ui.button(RichText::new(" + ").code()).clicked() {
+            if ui
+                .button(RichText::new(" + ").code())
+                .on_hover_text("Add a zenoh session configuration")
+                .clicked()
+            {
                 let mut dialog = FileDialog::open_file(None)
                     .show_new_folder(false)
                     .show_rename(false);

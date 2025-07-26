@@ -159,8 +159,9 @@ pub fn zenoh_value_abstract(encoding: &Encoding, data: &ZBytes) -> Result<String
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum ZCongestionControl {
-    Block,
     Drop,
+    Block,
+    BlockFirst,
 }
 
 impl From<CongestionControl> for ZCongestionControl {
@@ -168,6 +169,7 @@ impl From<CongestionControl> for ZCongestionControl {
         match value {
             CongestionControl::Block => ZCongestionControl::Block,
             CongestionControl::Drop => ZCongestionControl::Drop,
+            CongestionControl::BlockFirst => ZCongestionControl::BlockFirst,
         }
     }
 }
@@ -177,6 +179,7 @@ impl Into<CongestionControl> for ZCongestionControl {
         match self {
             ZCongestionControl::Block => CongestionControl::Block,
             ZCongestionControl::Drop => CongestionControl::Drop,
+            ZCongestionControl::BlockFirst => CongestionControl::BlockFirst,
         }
     }
 }

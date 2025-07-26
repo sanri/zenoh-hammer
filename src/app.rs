@@ -1,7 +1,7 @@
 use eframe::{
     egui::{
-        global_theme_preference_switch, special_emojis::GITHUB, Button, Context, Grid, Id, Layout,
-        RichText, TopBottomPanel, Ui, Window,
+        global_theme_preference_switch, gui_zoom::zoom_menu_buttons, special_emojis::GITHUB,
+        Button, Context, Grid, Id, Layout, RichText, TopBottomPanel, Ui, UiKind, Window,
     },
     emath::Align,
     Frame,
@@ -50,7 +50,7 @@ pub struct HammerApp {
     receiver_from_zenoh: Option<Receiver<MsgZenohToGui>>,
     opened_file: Option<PathBuf>,
     file_dialog: Option<FileDialog>,
-    show_about: bool,
+    show_help_about: bool,
     selected_page: Page,
     p_session: PageSession,
     p_sub: PageSub,
@@ -66,7 +66,7 @@ impl Default for HammerApp {
             app_config_path: None,
             opened_file: None,
             file_dialog: None,
-            show_about: false,
+            show_help_about: false,
             selected_page: Page::Session,
             p_session: PageSession::default(),
             p_sub: PageSub::default(),
@@ -161,7 +161,7 @@ impl HammerApp {
             }
         }
 
-        show_about_window(ctx, &mut self.show_about);
+        show_about_window(ctx, &mut self.show_help_about);
     }
 
     fn show_bar_contents(&mut self, ui: &mut Ui) {
@@ -178,7 +178,7 @@ impl HammerApp {
                     .show_rename(false);
                 dialog.open();
                 self.file_dialog = Some(dialog);
-                ui.close_menu();
+                ui.close_kind(UiKind::Menu);
             }
 
             if ui.add(Button::new("save")).clicked() {
@@ -198,7 +198,7 @@ impl HammerApp {
                     dialog.open();
                     self.file_dialog = Some(dialog);
                 }
-                ui.close_menu();
+                ui.close_kind(UiKind::Menu);
             }
 
             if ui.add(Button::new("save as ..")).clicked() {
@@ -208,7 +208,7 @@ impl HammerApp {
                 dialog.open();
                 self.file_dialog = Some(dialog);
 
-                ui.close_menu();
+                ui.close_kind(UiKind::Menu);
             }
         });
 
@@ -218,13 +218,13 @@ impl HammerApp {
             // ui.style_mut().wrap_mode = Some();
 
             if ui.add(Button::new("about")).clicked() {
-                self.show_about = true;
-                ui.close_menu();
+                self.show_help_about = true;
+                ui.close_kind(UiKind::Menu);
             }
 
-            // ui.menu_button("zoom", |ui| {
-            //     egui::gui_zoom::zoom_menu_buttons(ui, native_pixels_per_point);
-            // });
+            ui.menu_button("zoom", |ui| {
+                zoom_menu_buttons(ui);
+            });
 
             // ui.separator();
 
@@ -453,7 +453,7 @@ impl HammerApp {
 
 fn show_about_window(ctx: &Context, is_open: &mut bool) {
     let window = Window::new("About")
-        .id(Id::new("show about window"))
+        .id(Id::new("show help about window"))
         .collapsible(false)
         .scroll([false, false])
         .open(is_open)

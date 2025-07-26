@@ -3,7 +3,7 @@ use eframe::egui::{
     TextureOptions, Ui, Widget,
 };
 use egui_file::{DialogType, FileDialog};
-use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
+use egui_plot::{Plot, PlotImage, PlotPoint};
 use hex::decode;
 use image::{ImageFormat, ImageReader};
 use log::{info, warn};
@@ -749,6 +749,7 @@ fn show_image(ui: &mut Ui, texture: &TextureHandle) {
     let image_size = texture.size_vec2();
 
     let image = PlotImage::new(
+        "payload_plot_image_texture",
         texture,
         PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
         image_size,
@@ -756,7 +757,6 @@ fn show_image(ui: &mut Ui, texture: &TextureHandle) {
     .highlight(false);
 
     let plot = Plot::new("payload_plot_image")
-        .legend(Legend::default().position(Corner::RightTop))
         .show_x(true)
         .show_y(true)
         .show_axes([false, false])
