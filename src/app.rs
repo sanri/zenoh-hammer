@@ -1,7 +1,7 @@
 use eframe::{
     egui::{
         global_theme_preference_switch, gui_zoom::zoom_menu_buttons, special_emojis::GITHUB,
-        Button, Context, Grid, Id, Layout, RichText, TopBottomPanel, Ui, UiKind, Window,
+        Button, Context, Grid, Id, Layout, RichText, TopBottomPanel, Ui, Window,
     },
     emath::Align,
     Frame,
