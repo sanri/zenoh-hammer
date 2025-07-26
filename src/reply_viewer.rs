@@ -1,17 +1,16 @@
+use crate::{
+    data_viewer::DataViewer,
+    hex_viewer::HexViewer,
+    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
+};
 use eframe::egui::{CollapsingHeader, Grid, RichText, Ui};
 use std::sync::Arc;
 use uhlc::Timestamp;
 use zenoh::{
     bytes::Encoding,
-    config::ZenohId,
     query::Reply,
     sample::{SampleKind, SourceInfo},
-};
-
-use crate::{
-    data_viewer::DataViewer,
-    hex_viewer::HexViewer,
-    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
+    session::EntityGlobalId,
 };
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -106,7 +105,7 @@ struct ReplyInfo {
     express: Option<bool>,
     source_info: Option<SourceInfo>,
     attachment: Option<Vec<u8>>,
-    replier_id: Option<ZenohId>,
+    replier_id: Option<EntityGlobalId>,
     encoding: Encoding,
 }
 
@@ -255,7 +254,7 @@ impl ReplyInfo {
                 let s = match &self.replier_id {
                     None => "-".to_string(),
                     Some(id) => {
-                        format!("{}", id)
+                        format!("eid: {}\nzid: {}", id.eid(), id.zid())
                     }
                 };
                 let text = RichText::new(s).monospace();

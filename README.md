@@ -18,7 +18,7 @@ The functionality provided is similar to the zenoh command line tools z_sub, z_p
 
 
 ## Features
-- Support Zenoh V1.3
+- Support Zenoh V1.5
 - Support sending, receiving, and viewing multiple types of data.
   - text
   - binary
@@ -26,14 +26,13 @@ The functionality provided is similar to the zenoh command line tools z_sub, z_p
 - Message content can be viewed with a hexadecimal viewer.
 - The configuration data in the software interface can be saved as a file.
 
-## Run
+## Build
+
 To use on Linux, first run:
 
 ```shell
 sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
 ```
-
-## Build
 
 run the command in the project home directory
 

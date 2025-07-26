@@ -2,7 +2,7 @@ use eframe::egui::{
     Color32, ColorImage, RichText, TextEdit, TextureHandle, TextureOptions, Ui, Widget,
 };
 use egui_json_tree::JsonTree;
-use egui_plot::{Corner, Legend, Plot, PlotImage, PlotPoint};
+use egui_plot::{Plot, PlotImage, PlotPoint};
 use image::{ImageFormat, ImageReader};
 use std::io::Cursor;
 use zenoh::bytes::Encoding;
@@ -82,7 +82,7 @@ impl DataViewer {
             } => {
                 if image_texture_handle.is_none() {
                     let texture: TextureHandle = ui.ctx().load_texture(
-                        "simple_viewer-show_image",
+                        "data_viewer_show_image_texture",
                         color_image.clone(),
                         TextureOptions::NEAREST,
                     );
@@ -98,13 +98,13 @@ impl DataViewer {
 
                 let image_size = texture.size_vec2();
                 let plot_image = PlotImage::new(
+                    "data_viewer_show_image_plot_image",
                     texture,
                     PlotPoint::new(image_size.x / 2.0, -image_size.y / 2.0),
                     image_size,
                 )
                 .highlight(false);
-                let plot = Plot::new("sample_viewer_show_image_plot")
-                    .legend(Legend::default().position(Corner::RightTop))
+                let plot = Plot::new("data_viewer_show_image_plot")
                     .show_x(true)
                     .show_y(true)
                     .show_axes([false, false])
