@@ -1,6 +1,6 @@
 [package]
 name = "zenoh-hammer"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 
 [[example]]
@@ -20,7 +20,7 @@ inherits = "release"
 lto = true
 
 [dependencies]
-arboard = { version = "3.4" }
+arboard = { version = "3.6" }
 directories = { version = "6.0" }
 eframe = { version = "0.32", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
 egui_dnd = { version = "0.13" }
@@ -43,4 +43,4 @@ strum = { version = "0.27", features = [ "derive" ] }
 tokio = { version = "1.46", default-features = false }
 uhlc = { version = "0.8" }
 wgpu = { version = "25" }
-zenoh = { version = "1.5.0", features = [ "default", "unstable", "internal" ] }
+zenoh = { version = "1.5.1", features = [ "default", "unstable", "internal" ] }
