@@ -1,3 +1,5 @@
+# need to install nushell (https://www.nushell.sh/)
+set shell := ["nu", "-c"]
 
 default:
     @just --list --unsorted

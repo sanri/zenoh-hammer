@@ -3,22 +3,6 @@ name = "zenoh-hammer"
 version = "0.11.0"
 edition = "2021"
 
-[[example]]
-name = "show_hex_viewer"
-path = "examples/show_hex_viewer.rs"
-
-[[example]]
-name = "show_sample_viewer"
-path = "examples/show_sample_viewer.rs"
-
-[[example]]
-name = "show_payload_editor"
-path = "examples/show_payload_editor.rs"
-
-[profile.release-lto]
-inherits = "release"
-lto = true
-
 [dependencies]
 arboard = { version = "3.6" }
 directories = { version = "6.0" }
@@ -44,3 +28,19 @@ tokio = { version = "1.47", default-features = false }
 uhlc = { version = "0.8" }
 wgpu = { version = "27" }
 zenoh = { version = "1.6.2", features = [ "default", "unstable", "internal" ] }
+
+[[example]]
+name = "show_hex_viewer"
+path = "examples/show_hex_viewer.rs"
+
+[[example]]
+name = "show_sample_viewer"
+path = "examples/show_sample_viewer.rs"
+
+[[example]]
+name = "show_payload_editor"
+path = "examples/show_payload_editor.rs"
+
+[profile.release-lto]
+inherits = "release"
+lto = true
