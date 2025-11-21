@@ -359,6 +359,7 @@ impl PageSub {
         let mut frequency: Option<Frequency> = None;
         if let Some(dv) = data_group.map.get(&selected_key) {
             data_group.buffer_size = dv.buffer_size as u32;
+            data_group.items_count = dv.deque.len() as u32;
             frequency = dv.compute_frequency();
         }
 
@@ -379,8 +380,10 @@ impl PageSub {
             });
 
             ui.horizontal(|ui| {
+                ui.label(format!("items count: {}", data_group.items_count));
+                ui.add_space(20.0);
                 ui.label(format!("buffer size: {}", data_group.buffer_size));
-                ui.label("   ");
+                ui.add_space(10.0);
                 let dv = DragValue::new(&mut data_group.buffer_size_tmp)
                     .speed(10.0)
                     .range(VALUE_BUFFER_SIZE_DEFAULT..=10000);
@@ -632,6 +635,7 @@ pub struct PageSubData {
     filter_str: String,
     buffer_size_tmp: u32,
     buffer_size: u32,
+    items_count: u32,
     key_tree: Tree,                    // tree be show
     map: BTreeMap<String, DataValues>, // key
 }
@@ -689,6 +693,7 @@ impl PageSubData {
             filter_str: "".to_string(),
             buffer_size_tmp: VALUE_BUFFER_SIZE_DEFAULT as u32,
             buffer_size: VALUE_BUFFER_SIZE_DEFAULT as u32,
+            items_count: 0,
             key_tree: Tree::default(),
             map: BTreeMap::new(),
         }
