@@ -12,10 +12,7 @@ use eframe::{
     AppCreator, Frame, HardwareAcceleration, NativeOptions,
 };
 use env_logger::Env;
-use std::{
-    io::Read,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 use uhlc::{Timestamp, ID, NTP64};
 use zenoh::{
@@ -25,7 +22,7 @@ use zenoh::{
 
 use crate::{
     sample_viewer::{SampleInfo, SampleViewer},
-    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
+    zenoh_data::{BytesType, ZCongestionControl, ZPriority, ZReliability},
 };
 
 #[derive(Eq, PartialEq, Copy, Clone, AsRefStr, EnumIter)]
@@ -103,7 +100,7 @@ fn main() {
         ..NativeOptions::default()
     };
     let app = AppHexViewer::default();
-    let create: AppCreator = Box::new(|cc| Ok(Box::new(app)));
+    let create: AppCreator = Box::new(|_cc| Ok(Box::new(app)));
     let _ = eframe::run_native("SampleViewer", options, create);
 }
 
@@ -119,6 +116,7 @@ fn example_base_info() -> SampleInfo {
     let express = true;
     let source_info = SourceInfo::new(None, Some(123));
     let attachment = b"a=1".to_vec();
+    let bytes_type = BytesType::Raw;
 
     SampleInfo {
         key,
@@ -131,6 +129,7 @@ fn example_base_info() -> SampleInfo {
         express,
         source_info,
         attachment,
+        bytes_type,
     }
 }
 

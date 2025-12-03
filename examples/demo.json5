@@ -1,9 +1,20 @@
 {
   mode: "client",
-
   connect: {
     endpoints: [
-       "tcp/127.0.0.1:7447"
+      "tcp/127.0.0.1:7447"
     ],
   },
+
+  transport: {
+    shared_memory: {
+      enabled: true,
+      mode: "init",
+      transport_optimization: {
+        enabled: true,
+        pool_size: 33554432,  // 1024 * 1024 * 32
+        message_size_threshold: 3072,
+      },
+    },
+  }
 }

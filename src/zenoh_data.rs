@@ -341,3 +341,18 @@ impl Into<Locality> for ZLocality {
         }
     }
 }
+
+#[derive(Default, Copy, Clone, AsRefStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum BytesType {
+    #[default]
+    Raw,
+    Shm,
+}
+
+pub(crate) fn bytes_type(z_bytes: &ZBytes) -> BytesType {
+    match z_bytes.as_shm() {
+        None => BytesType::Raw,
+        Some(_) => BytesType::Shm,
+    }
+}
