@@ -9,7 +9,7 @@ use zenoh::{
 use crate::{
     data_viewer::DataViewer,
     hex_viewer::HexViewer,
-    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
+    zenoh_data::{bytes_type, BytesType, ZCongestionControl, ZPriority, ZReliability},
 };
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -113,6 +113,7 @@ pub struct SampleInfo {
     pub express: bool,
     pub source_info: SourceInfo,
     pub attachment: Vec<u8>,
+    pub bytes_type: BytesType,
 }
 
 impl Default for SampleInfo {
@@ -128,6 +129,7 @@ impl Default for SampleInfo {
             express: false,
             source_info: SourceInfo::new(None, None),
             attachment: Vec::new(),
+            bytes_type: BytesType::Raw,
         }
     }
 }
@@ -149,6 +151,7 @@ impl SampleInfo {
             let mut reader = s.reader();
             let _ = reader.read_to_end(&mut attachment);
         }
+        let bytes_type = bytes_type(sample.payload());
 
         SampleInfo {
             key,
@@ -161,6 +164,7 @@ impl SampleInfo {
             express,
             source_info,
             attachment,
+            bytes_type,
         }
     }
 
@@ -172,7 +176,7 @@ impl SampleInfo {
             ui.end_row();
 
             ui.label("kind:");
-            let text = RichText::new(self.kind.to_string()).monospace();
+            let text = RichText::new(self.kind.to_string().to_lowercase()).monospace();
             ui.label(text);
             ui.end_row();
 
@@ -242,6 +246,11 @@ impl SampleInfo {
 
             ui.label("express:");
             let text = RichText::new(self.express.to_string()).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("bytes_type:");
+            let text = RichText::new(self.bytes_type.as_ref()).monospace();
             ui.label(text);
             ui.end_row();
         };
