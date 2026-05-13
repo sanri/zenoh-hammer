@@ -1,7 +1,7 @@
 use arboard::Clipboard;
 use eframe::egui::{
-    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, DragValue, Grid, Id, Layout,
-    RichText, ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Window,
+    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, DragValue, Grid, Id, Layout, Panel,
+    RichText, ScrollArea, TextEdit, TextStyle, Ui, Window,
 };
 use egui_dnd::dnd;
 use egui_extras::{Column, TableBody, TableBuilder};
@@ -19,7 +19,7 @@ use zenoh::{key_expr::OwnedKeyExpr, sample::Sample};
 use crate::{
     sample_viewer::SampleViewer,
     task_zenoh::SubData,
-    zenoh_data::{zenoh_value_abstract, ZLocality},
+    zenoh_data::{ZLocality, zenoh_value_abstract},
 };
 
 pub const VALUE_BUFFER_SIZE_DEFAULT: usize = 10;
@@ -99,14 +99,14 @@ impl PageSub {
         Ok(())
     }
 
-    pub fn show(&mut self, ctx: &Context) {
-        SidePanel::left("page_sub_panel_left")
+    pub fn show(&mut self, ui: &mut Ui) {
+        Panel::left("page_sub_panel_left")
             .resizable(true)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 self.show_subscribers_name(ui);
             });
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             self.show_name_key(ui);
 
             ui.separator();
@@ -129,7 +129,7 @@ impl PageSub {
             .default_width(200.0)
             .min_width(200.0);
 
-        window.show(ctx, |ui| {
+        window.show(ui.ctx(), |ui| {
             self.sample_viewer_window.show(ui);
         });
     }

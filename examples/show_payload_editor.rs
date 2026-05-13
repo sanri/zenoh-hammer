@@ -6,8 +6,9 @@ mod payload_editor;
 mod zenoh_data;
 
 use eframe::{
-    egui::{CentralPanel, Context},
-    run_native, App, AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    App, AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    egui::{CentralPanel, Ui},
+    run_native,
 };
 use env_logger::Env;
 
@@ -26,8 +27,8 @@ impl Default for AppPayloadEditor {
 }
 
 impl App for AppPayloadEditor {
-    fn update(&mut self, ctx: &Context, _: &mut Frame) {
-        CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        CentralPanel::default().show_inside(ui, |ui| {
             self.editor.show(ui);
         });
     }

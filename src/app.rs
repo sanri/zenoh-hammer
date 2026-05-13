@@ -1,13 +1,13 @@
 use eframe::{
+    Frame,
     egui::{
+        Button, Context, Grid, Id, Layout, Panel, RichText, Ui, Window,
         global_theme_preference_switch, gui_zoom::zoom_menu_buttons, special_emojis::GITHUB,
-        Button, Context, Grid, Id, Layout, RichText, TopBottomPanel, Ui, Window,
     },
     emath::Align,
-    Frame,
 };
 use egui_file::{DialogType, FileDialog};
-use flume::{unbounded, TryRecvError};
+use flume::{TryRecvError, unbounded};
 use log::{error, info, warn};
 use static_toml::static_toml;
 use std::{
@@ -25,7 +25,7 @@ use crate::{
     page_session::PageSession,
     page_sub,
     page_sub::PageSub,
-    task_zenoh::{start_async, MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender},
+    task_zenoh::{MsgGuiToZenoh, MsgZenohToGui, Receiver, Sender, start_async},
 };
 
 static_toml! {
@@ -77,14 +77,14 @@ impl Default for HammerApp {
 }
 
 impl eframe::App for HammerApp {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         self.processing_zenoh_msg();
         self.processing_page_session_events();
         self.processing_page_sub_events();
         self.processing_page_put_events();
         self.processing_page_get_events();
-        self.show_ui(ctx, frame);
-        ctx.request_repaint_after(Duration::from_millis(100));
+        self.show_ui(ui, frame);
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
     }
 }
 
@@ -97,8 +97,8 @@ impl HammerApp {
         self.opened_file = Some(opened_file);
     }
 
-    fn show_ui(&mut self, ctx: &Context, _frame: &mut Frame) {
-        TopBottomPanel::top("top_bar").show(ctx, |ui| {
+    fn show_ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        Panel::top("top_bar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 self.show_bar_contents(ui);
             });
@@ -106,21 +106,21 @@ impl HammerApp {
 
         match self.selected_page {
             Page::Session => {
-                self.p_session.show(ctx);
+                self.p_session.show(ui);
             }
             Page::Sub => {
-                self.p_sub.show(ctx);
+                self.p_sub.show(ui);
             }
             Page::Get => {
-                self.p_get.show(ctx);
+                self.p_get.show(ui);
             }
             Page::Put => {
-                self.p_put.show(ctx);
+                self.p_put.show(ui);
             }
         }
 
         if let Some(dialog) = &mut self.file_dialog {
-            if dialog.show(ctx).selected() {
+            if dialog.show(ui.ctx()).selected() {
                 match dialog.dialog_type() {
                     DialogType::SelectFolder => {
                         return;
@@ -161,7 +161,7 @@ impl HammerApp {
             }
         }
 
-        show_about_window(ctx, &mut self.show_help_about);
+        show_about_window(ui.ctx(), &mut self.show_help_about);
     }
 
     fn show_bar_contents(&mut self, ui: &mut Ui) {
@@ -173,9 +173,13 @@ impl HammerApp {
                     return;
                 }
 
-                let mut dialog = FileDialog::open_file(self.opened_file.clone())
+                let mut dialog = FileDialog::open_file()
                     .show_new_folder(false)
                     .show_rename(false);
+                if let Some(path) = &self.opened_file {
+                    dialog.set_path(path);
+                }
+
                 dialog.open();
                 self.file_dialog = Some(dialog);
             }
@@ -191,18 +195,24 @@ impl HammerApp {
                         }
                     }
                 } else {
-                    let mut dialog = FileDialog::save_file(self.opened_file.clone())
+                    let mut dialog = FileDialog::save_file()
                         .show_new_folder(true)
                         .show_rename(true);
+                    if let Some(path) = &self.opened_file {
+                        dialog.set_path(path);
+                    }
                     dialog.open();
                     self.file_dialog = Some(dialog);
                 }
             }
 
             if ui.add(Button::new("save as ..")).clicked() {
-                let mut dialog = FileDialog::save_file(self.opened_file.clone())
+                let mut dialog = FileDialog::save_file()
                     .show_new_folder(true)
                     .show_rename(true);
+                if let Some(path) = &self.opened_file {
+                    dialog.set_path(path);
+                }
                 dialog.open();
                 self.file_dialog = Some(dialog);
             }

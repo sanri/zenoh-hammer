@@ -13,7 +13,7 @@ use std::{
     fs::read,
     io::Cursor,
     path::{Path, PathBuf},
-    str::{from_utf8, FromStr},
+    str::{FromStr, from_utf8},
     sync::Arc,
 };
 use strum::EnumCount;
@@ -277,9 +277,12 @@ impl PayloadEdit {
                         DataLoadMode::String => {}
                         DataLoadMode::File => {
                             if ui.button("select text file").clicked() {
-                                let mut dialog = FileDialog::open_file(self.file_path.clone())
+                                let mut dialog = FileDialog::open_file()
                                     .show_new_folder(false)
                                     .show_rename(false);
+                                if let Some(p) = &self.file_path {
+                                    dialog.set_path(p);
+                                }
                                 dialog.open();
                                 self.file_dialog = Some(dialog);
                             }
@@ -361,9 +364,12 @@ impl PayloadEdit {
                         }
                         DataLoadMode::File => {
                             if ui.button("select binary file").clicked() {
-                                let mut dialog = FileDialog::open_file(self.file_path.clone())
+                                let mut dialog = FileDialog::open_file()
                                     .show_new_folder(false)
                                     .show_rename(false);
+                                if let Some(p) = &self.file_path {
+                                    dialog.set_path(p);
+                                }
                                 dialog.open();
                                 self.file_dialog = Some(dialog);
                             }
@@ -438,9 +444,12 @@ impl PayloadEdit {
             Page::Source => {
                 ui.horizontal(|ui| {
                     if ui.button("select image file").clicked() {
-                        let mut dialog = FileDialog::open_file(self.file_path.clone())
+                        let mut dialog = FileDialog::open_file()
                             .show_new_folder(false)
                             .show_rename(false);
+                        if let Some(p) = &self.file_path {
+                            dialog.set_path(p);
+                        }
                         dialog.open();
                         self.file_dialog = Some(dialog);
                     }

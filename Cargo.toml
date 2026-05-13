@@ -1,33 +1,33 @@
 [package]
 name = "zenoh-hammer"
-version = "0.11.2"
-edition = "2021"
+version = "0.12.0"
+edition = "2024"
 
 [dependencies]
 arboard = { version = "3.6" }
 directories = { version = "6.0" }
-eframe = { version = "0.33", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
-egui_dnd = { version = "0.14" }
-egui_extras = { version = "0.33" }
-egui_file = { version = "0.24" }
-egui_json_tree = { version = "0.14" }
-egui_plot = { version = "0.34" }
+eframe = { version = "0.34", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
+egui_dnd = { version = "0.15" }
+egui_extras = { version = "0.34" }
+egui_file = { version = "0.26" }
+egui_json_tree = { version = "0.15" }
+egui_plot = { version = "0.35" }
 env_logger = { version = "0.11" }
 flume = { version = "0.11" }
 hex = { version = "0.4" }
 image = { version = "0.25", default-features = false, features = [ "png", "jpeg", "bmp", "gif", "webp" ] }
-json5 = { version = "0.4" }
+json5 = { version = "1.3" }
 log = { version = "0.4" }
 num_enum = { version = "0.7" }
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
 size_fmt = { version = "0.1" }
 static-toml = { version = "1.3" }
-strum = { version = "0.27", features = [ "derive" ] }
+strum = { version = "0.28", features = [ "derive" ] }
 tokio = { version = "1.47", default-features = false }
-uhlc = { version = "0.8" }
-wgpu = { version = "27" }
-zenoh = { version = "1.6.2", features = [ "default", "unstable", "internal", "shared-memory" ] }
+#uhlc = { version = "0.9" }
+#wgpu = { version = "27" }
+zenoh = { version = "1.9.0", features = [ "default", "unstable", "internal", "shared-memory" ] }
 
 [[example]]
 name = "show_hex_viewer"

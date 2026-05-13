@@ -1,12 +1,7 @@
-use crate::{
-    payload_editor::{ArchivePayloadEdit, PayloadEdit},
-    task_zenoh::PutData,
-    zenoh_data::{ZCongestionControl, ZPriority},
-};
 use eframe::{
     egui::{
-        CentralPanel, CollapsingHeader, Color32, ComboBox, Context, Grid, Layout, RichText,
-        ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Widget,
+        CentralPanel, CollapsingHeader, Color32, ComboBox, Grid, Layout, Panel, RichText,
+        ScrollArea, TextEdit, TextStyle, Ui, Widget,
     },
     emath::Align,
 };
@@ -18,6 +13,12 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use zenoh::key_expr::OwnedKeyExpr;
+
+use crate::{
+    payload_editor::{ArchivePayloadEdit, PayloadEdit},
+    task_zenoh::PutData,
+    zenoh_data::{ZCongestionControl, ZPriority},
+};
 
 pub enum Event {
     Put(Box<PutData>),
@@ -297,14 +298,14 @@ impl PagePut {
         Ok(())
     }
 
-    pub fn show(&mut self, ctx: &Context) {
-        SidePanel::left("page_put_panel_left")
+    pub fn show(&mut self, ui: &mut Ui) {
+        Panel::left("page_put_panel_left")
             .resizable(true)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 self.show_puts_name(ui);
             });
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;

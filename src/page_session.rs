@@ -1,6 +1,6 @@
 use eframe::egui::{
-    Align, CentralPanel, Color32, Context, Grid, Layout, RichText, ScrollArea, SidePanel, TextEdit,
-    TextStyle, Ui, Widget,
+    Align, CentralPanel, Color32, Grid, Layout, Panel, RichText, ScrollArea, TextEdit, TextStyle,
+    Ui, Widget,
 };
 use egui_dnd::dnd;
 use egui_file::{DialogType, FileDialog};
@@ -323,14 +323,14 @@ impl PageSession {
         Ok(())
     }
 
-    pub fn show(&mut self, ctx: &Context) {
-        SidePanel::left("page_session_panel_left")
+    pub fn show(&mut self, ui: &mut Ui) {
+        Panel::left("page_session_panel_left")
             .resizable(true)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 self.show_config_file_list(ui);
             });
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             if let Some(config_file_data) = self.config_files.get_mut(&self.selected_config_file_id)
             {
                 config_file_data.show(ui, self.connected_config_file_id, &mut self.events);
@@ -339,7 +339,7 @@ impl PageSession {
 
         let mut open_file_path: Option<PathBuf> = None;
         if let Some(dialog) = &mut self.file_dialog {
-            if dialog.show(ctx).selected() {
+            if dialog.show(ui.ctx()).selected() {
                 match dialog.dialog_type() {
                     DialogType::SelectFolder | DialogType::SaveFile => {
                         return;
@@ -435,7 +435,7 @@ impl PageSession {
                 .on_hover_text("Add a zenoh session configuration")
                 .clicked()
             {
-                let mut dialog = FileDialog::open_file(None)
+                let mut dialog = FileDialog::open_file()
                     .show_new_folder(false)
                     .show_rename(false);
                 dialog.open();
