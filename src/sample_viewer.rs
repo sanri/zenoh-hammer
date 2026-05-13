@@ -1,15 +1,15 @@
 use eframe::egui::{CollapsingHeader, Grid, RichText, Ui};
 use std::{io::Read, sync::Arc};
-use uhlc::Timestamp;
 use zenoh::{
     bytes::Encoding,
     sample::{Sample, SampleKind, SourceInfo},
+    time::Timestamp,
 };
 
 use crate::{
     data_viewer::DataViewer,
     hex_viewer::HexViewer,
-    zenoh_data::{bytes_type, BytesType, ZCongestionControl, ZPriority, ZReliability},
+    zenoh_data::{BytesType, ZCongestionControl, ZPriority, ZReliability, bytes_type},
 };
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -111,7 +111,7 @@ pub struct SampleInfo {
     pub priority: ZPriority,
     pub reliability: ZReliability,
     pub express: bool,
-    pub source_info: SourceInfo,
+    pub source_info: Option<SourceInfo>,
     pub attachment: Vec<u8>,
     pub bytes_type: BytesType,
 }
@@ -127,7 +127,7 @@ impl Default for SampleInfo {
             priority: ZPriority::RealTime,
             reliability: ZReliability::Reliable,
             express: false,
-            source_info: SourceInfo::new(None, None),
+            source_info: None,
             attachment: Vec::new(),
             bytes_type: BytesType::Raw,
         }
@@ -144,7 +144,7 @@ impl SampleInfo {
         let priority = sample.priority().clone().into();
         let reliability = sample.reliability().clone().into();
         let express = sample.express();
-        let source_info = sample.source_info().clone();
+        let source_info = sample.source_info().cloned();
 
         let mut attachment = Vec::new();
         if let Some(s) = sample.attachment() {
@@ -207,11 +207,22 @@ impl SampleInfo {
             ui.label(text);
             ui.end_row();
 
-            ui.label("source_info. id:");
-            let s = match self.source_info.source_id() {
+            ui.label("source_info. id. zid:");
+            let s = match &self.source_info {
                 None => "-".to_string(),
                 Some(o) => {
-                    format!("{:?}", o)
+                    format!("{}", o.source_id().zid().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("source_info. id. eid:");
+            let s = match &self.source_info {
+                None => "-".to_string(),
+                Some(o) => {
+                    format!("{}", o.source_id().eid().to_string())
                 }
             };
             let text = RichText::new(s).monospace();
@@ -219,10 +230,10 @@ impl SampleInfo {
             ui.end_row();
 
             ui.label("source_info. sn:");
-            let s = match self.source_info.source_sn() {
+            let s = match &self.source_info {
                 None => "-".to_string(),
                 Some(o) => {
-                    format!("{}", o)
+                    format!("{}", o.source_sn())
                 }
             };
             let text = RichText::new(s).monospace();

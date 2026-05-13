@@ -1,16 +1,17 @@
-use crate::{
-    data_viewer::DataViewer,
-    hex_viewer::HexViewer,
-    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
-};
 use eframe::egui::{CollapsingHeader, Grid, RichText, Ui};
 use std::sync::Arc;
-use uhlc::Timestamp;
 use zenoh::{
     bytes::Encoding,
     query::Reply,
     sample::{SampleKind, SourceInfo},
     session::EntityGlobalId,
+    time::Timestamp,
+};
+
+use crate::{
+    data_viewer::DataViewer,
+    hex_viewer::HexViewer,
+    zenoh_data::{ZCongestionControl, ZPriority, ZReliability},
 };
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -142,7 +143,7 @@ impl ReplyInfo {
                 let priority = Some(sample.priority().clone().into());
                 let reliability = Some(sample.reliability().clone().into());
                 let express = Some(sample.express());
-                let source_info = Some(sample.source_info().clone());
+                let source_info = sample.source_info().cloned();
                 let attachment = sample.attachment().map(|s| s.to_bytes().to_vec());
 
                 ReplyInfo {
@@ -227,40 +228,60 @@ impl ReplyInfo {
                 ui.end_row();
             }
 
-            if let Some(source_info) = &self.source_info {
-                ui.label("source_info. id:");
-                let s = match source_info.source_id() {
-                    None => "-".to_string(),
-                    Some(o) => {
-                        format!("{:?}", o)
-                    }
-                };
-                let text = RichText::new(s).monospace();
-                ui.label(text);
-                ui.end_row();
+            ui.label("source_info. id. zid:");
+            let s = match &self.source_info {
+                None => "-".to_string(),
+                Some(o) => {
+                    format!("{}", o.source_id().zid().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
 
-                ui.label("source_info. sn:");
-                let s = match source_info.source_sn() {
-                    None => "-".to_string(),
-                    Some(o) => {
-                        format!("{}", o)
-                    }
-                };
-                let text = RichText::new(s).monospace();
-                ui.label(text);
-                ui.end_row();
+            ui.label("source_info. id. eid:");
+            let s = match &self.source_info {
+                None => "-".to_string(),
+                Some(o) => {
+                    format!("{}", o.source_id().eid().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
 
-                ui.label("replier id:");
-                let s = match &self.replier_id {
-                    None => "-".to_string(),
-                    Some(id) => {
-                        format!("eid: {}\nzid: {}", id.eid(), id.zid())
-                    }
-                };
-                let text = RichText::new(s).monospace();
-                ui.label(text);
-                ui.end_row();
-            }
+            ui.label("source_info. sn:");
+            let s = match &self.source_info {
+                None => "-".to_string(),
+                Some(o) => {
+                    format!("{}", o.source_sn().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("replier id. zid:");
+            let s = match &self.replier_id {
+                None => "-".to_string(),
+                Some(id) => {
+                    format!("{}", id.zid().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
+
+            ui.label("replier id. eid:");
+            let s = match &self.replier_id {
+                None => "-".to_string(),
+                Some(id) => {
+                    format!("{}", id.eid().to_string())
+                }
+            };
+            let text = RichText::new(s).monospace();
+            ui.label(text);
+            ui.end_row();
 
             if let Some(congestion_control) = &self.congestion_control {
                 ui.label("congestion_control:");

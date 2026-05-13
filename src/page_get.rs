@@ -1,12 +1,6 @@
-use crate::{
-    payload_editor::{ArchivePayloadEdit, PayloadEdit},
-    reply_viewer::ReplyViewer,
-    task_zenoh::QueryData,
-    zenoh_data::{zenoh_value_abstract, ZConsolidation, ZLocality, ZQueryTarget},
-};
 use eframe::egui::{
-    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, DragValue, Grid, Id, Layout,
-    RichText, ScrollArea, SidePanel, TextEdit, TextStyle, Ui, Widget, Window,
+    Align, CentralPanel, CollapsingHeader, Color32, ComboBox, DragValue, Grid, Id, Layout, Panel,
+    RichText, ScrollArea, TextEdit, TextStyle, Ui, Widget, Window,
 };
 use egui_dnd::dnd;
 use egui_extras::{Column, TableBody, TableBuilder, TableRow};
@@ -17,9 +11,18 @@ use std::{
     time::Duration,
 };
 use strum::IntoEnumIterator;
-use zenoh::bytes::Encoding;
-use zenoh::query::Parameters;
-use zenoh::{bytes::ZBytes, key_expr::OwnedKeyExpr, query::Reply};
+use zenoh::{
+    bytes::{Encoding, ZBytes},
+    key_expr::OwnedKeyExpr,
+    query::{Parameters, Reply},
+};
+
+use crate::{
+    payload_editor::{ArchivePayloadEdit, PayloadEdit},
+    reply_viewer::ReplyViewer,
+    task_zenoh::QueryData,
+    zenoh_data::{ZConsolidation, ZLocality, ZQueryTarget, zenoh_value_abstract},
+};
 
 // query
 pub enum Event {
@@ -489,14 +492,14 @@ impl PageGet {
         Ok(())
     }
 
-    pub fn show(&mut self, ctx: &Context) {
-        SidePanel::left("page_get_panel_left")
+    pub fn show(&mut self, ui: &mut Ui) {
+        Panel::left("page_get_panel_left")
             .resizable(true)
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 self.show_gets_name(ui);
             });
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
@@ -521,7 +524,7 @@ impl PageGet {
             .default_width(200.0)
             .min_width(200.0);
 
-        window.show(ctx, |ui| {
+        window.show(ui.ctx(), |ui| {
             self.reply_viewer_window.show(ui);
         });
     }

@@ -1,4 +1,4 @@
-use flume::{unbounded, RecvError, TryRecvError};
+use flume::{RecvError, TryRecvError, unbounded};
 use log::{error, info, warn};
 use std::{
     collections::BTreeMap,
@@ -9,6 +9,7 @@ use std::{
 use tokio::{runtime::Runtime, select, task, time::sleep};
 use zenoh::query::{Parameters, Selector};
 use zenoh::{
+    Config, Session,
     bytes::{Encoding, ZBytes},
     handlers::FifoChannelHandler,
     key_expr::OwnedKeyExpr,
@@ -16,7 +17,6 @@ use zenoh::{
     qos::{CongestionControl, Priority},
     query::{QueryConsolidation, QueryTarget, Reply},
     sample::{Locality, Sample},
-    Config, Session,
 };
 
 pub type Sender<T> = flume::Sender<T>;

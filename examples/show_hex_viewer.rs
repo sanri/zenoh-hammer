@@ -2,8 +2,8 @@
 mod hex_viewer;
 
 use eframe::{
-    egui::{CentralPanel, Context},
     AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    egui::{CentralPanel, Ui},
 };
 use env_logger::Env;
 use std::sync::Arc;
@@ -29,8 +29,8 @@ impl Default for AppHexViewer {
 }
 
 impl eframe::App for AppHexViewer {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        CentralPanel::default().show_inside(ui, |ui| {
             self.viewer.show(ui);
         });
     }

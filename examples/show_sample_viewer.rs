@@ -7,17 +7,19 @@ mod sample_viewer;
 #[path = "../src/zenoh_data.rs"]
 mod zenoh_data;
 
+use eframe::egui::CentralPanel;
 use eframe::{
-    egui::{CentralPanel, ComboBox, Context, ScrollArea, Ui},
     AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    egui::{ComboBox, ScrollArea, Ui},
 };
 use env_logger::Env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
-use uhlc::{Timestamp, ID, NTP64};
 use zenoh::{
     bytes::{Encoding, ZBytes},
     sample::{SampleKind, SourceInfo},
+    session::EntityGlobalId,
+    time::{NTP64, Timestamp, TimestampId},
 };
 
 use crate::{
@@ -86,8 +88,8 @@ impl AppHexViewer {
 }
 
 impl eframe::App for AppHexViewer {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        CentralPanel::default().show(ctx, |ui| self.show(ui));
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        CentralPanel::default().show_inside(ui, |ui| self.show(ui));
     }
 }
 
@@ -109,12 +111,12 @@ fn example_base_info() -> SampleInfo {
     let encoding = Encoding::default();
     let kind = SampleKind::Put;
     let time = NTP64::from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap());
-    let timestamp = Some(Timestamp::new(time, ID::rand()));
+    let timestamp = Some(Timestamp::new(time, TimestampId::rand()));
     let congestion_control = ZCongestionControl::Block;
     let priority = ZPriority::RealTime;
     let reliability = ZReliability::Reliable;
     let express = true;
-    let source_info = SourceInfo::new(None, Some(123));
+    let source_info = Some(SourceInfo::new(EntityGlobalId::default(), 123));
     let attachment = b"a=1".to_vec();
     let bytes_type = BytesType::Raw;
 
