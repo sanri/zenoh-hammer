@@ -1,33 +1,31 @@
 [package]
 name = "zenoh-hammer"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 
 [dependencies]
-arboard = { version = "3.6" }
-directories = { version = "6.0" }
-eframe = { version = "0.34", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
-egui_dnd = { version = "0.15" }
-egui_extras = { version = "0.34" }
-egui_file = { version = "0.26" }
-egui_json_tree = { version = "0.15" }
-egui_plot = { version = "0.35" }
-env_logger = { version = "0.11" }
-flume = { version = "0.11" }
-hex = { version = "0.4" }
-image = { version = "0.25", default-features = false, features = [ "png", "jpeg", "bmp", "gif", "webp" ] }
-json5 = { version = "1.3" }
-log = { version = "0.4" }
-num_enum = { version = "0.7" }
-serde = { version = "1.0" }
-serde_json = { version = "1.0" }
-size_fmt = { version = "0.1" }
-static-toml = { version = "1.3" }
-strum = { version = "0.28", features = [ "derive" ] }
-tokio = { version = "1.47", default-features = false }
-#uhlc = { version = "0.9" }
-#wgpu = { version = "27" }
-zenoh = { version = "1.9.0", features = [ "default", "unstable", "internal", "shared-memory" ] }
+arboard = { version = "3.6.1" }
+directories = { version = "6.0.0" }
+eframe = { version = "0.36.1", default-features = false, features = [ "persistence", "wgpu", "wayland", "x11" ] }
+egui_dnd = { version = "0.17.0" }
+egui_extras = { version = "0.36.1" }
+egui_file = { version = "0.28.0" }
+egui_json_tree = { version = "0.17.0" }
+egui_plot = { version = "0.37.0" }
+env_logger = { version = "0.11.11" }
+flume = { version = "0.12.0" }
+hex = { version = "0.4.3" }
+image = { version = "0.25.10", default-features = false, features = [ "png", "jpeg", "bmp", "gif", "webp" ] }
+json5 = { version = "1.3.1" }
+log = { version = "0.4.33" }
+num_enum = { version = "0.7.6" }
+serde = { version = "1.0.229" }
+serde_json = { version = "1.0.151" }
+size_fmt = { version = "0.1.1" }
+static-toml = { version = "1.3.0" }
+strum = { version = "0.28.0", features = [ "derive" ] }
+tokio = { version = "1.53.1", default-features = false }
+zenoh = { version = "1.10.0", features = [ "default", "unstable", "internal", "shared-memory" ] }
 
 [[example]]
 name = "show_hex_viewer"

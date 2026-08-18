@@ -2,7 +2,7 @@
 mod hex_viewer;
 
 use eframe::{
-    AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    AppCreator, Frame, NativeOptions,
     egui::{CentralPanel, Ui},
 };
 use env_logger::Env;
@@ -30,7 +30,7 @@ impl Default for AppHexViewer {
 
 impl eframe::App for AppHexViewer {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             self.viewer.show(ui);
         });
     }
@@ -39,10 +39,11 @@ impl eframe::App for AppHexViewer {
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("show_hex_viewer=info")).init();
 
-    let options = NativeOptions {
-        hardware_acceleration: HardwareAcceleration::Required,
-        ..NativeOptions::default()
-    };
+    // let options = NativeOptions {
+    //     hardware_acceleration: HardwareAcceleration::Required,
+    //     ..NativeOptions::default()
+    // };
+    let options = NativeOptions::default();
     let app = AppHexViewer::default();
     let create: AppCreator = Box::new(|_cc| Ok(Box::new(app)));
     let _ = eframe::run_native("HexViewer", options, create);

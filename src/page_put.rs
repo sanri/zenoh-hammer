@@ -301,11 +301,11 @@ impl PagePut {
     pub fn show(&mut self, ui: &mut Ui) {
         Panel::left("page_put_panel_left")
             .resizable(true)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 self.show_puts_name(ui);
             });
 
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             let data = match self.data_map.get_mut(&self.selected_data_id) {
                 None => {
                     return;
@@ -401,7 +401,7 @@ impl PagePut {
     }
 }
 
-#[derive(Hash)]
+#[derive(Hash, Debug)]
 struct DndItem {
     key_id: u64,
 }

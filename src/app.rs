@@ -98,7 +98,7 @@ impl HammerApp {
     }
 
     fn show_ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-        Panel::top("top_bar").show_inside(ui, |ui| {
+        Panel::top("top_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 self.show_bar_contents(ui);
             });

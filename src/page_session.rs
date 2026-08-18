@@ -326,11 +326,11 @@ impl PageSession {
     pub fn show(&mut self, ui: &mut Ui) {
         Panel::left("page_session_panel_left")
             .resizable(true)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 self.show_config_file_list(ui);
             });
 
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             if let Some(config_file_data) = self.config_files.get_mut(&self.selected_config_file_id)
             {
                 config_file_data.show(ui, self.connected_config_file_id, &mut self.events);
@@ -486,7 +486,7 @@ impl PageSession {
     }
 }
 
-#[derive(Hash)]
+#[derive(Hash, Debug)]
 struct DndItem {
     id: u64,
 }

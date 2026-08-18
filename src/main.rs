@@ -14,10 +14,7 @@ mod task_zenoh;
 mod zenoh_data;
 
 use directories::ProjectDirs;
-use eframe::{
-    egui::ViewportBuilder, icon_data::from_png_bytes, AppCreator, HardwareAcceleration,
-    NativeOptions,
-};
+use eframe::{AppCreator, NativeOptions, egui::ViewportBuilder, icon_data::from_png_bytes};
 use env_logger::Env;
 use log::{info, warn};
 use std::{
@@ -32,7 +29,6 @@ fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("zenoh_hammer=info")).init();
 
     let options = NativeOptions {
-        hardware_acceleration: HardwareAcceleration::Required,
         viewport: ViewportBuilder {
             icon: Some(Arc::new(
                 from_png_bytes(&include_bytes!("../media/hammer.png")[..]).unwrap(),
@@ -124,11 +120,7 @@ fn read_last_opened_file(p: &Path) -> Option<PathBuf> {
     match fs::read_to_string(p) {
         Ok(o) => {
             let p = PathBuf::from(o);
-            if p.is_file() {
-                Some(p)
-            } else {
-                None
-            }
+            if p.is_file() { Some(p) } else { None }
         }
         Err(_) => None,
     }
