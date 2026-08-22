@@ -102,11 +102,11 @@ impl PageSub {
     pub fn show(&mut self, ui: &mut Ui) {
         Panel::left("page_sub_panel_left")
             .resizable(true)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 self.show_subscribers_name(ui);
             });
 
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             self.show_name_key(ui);
 
             ui.separator();
@@ -506,7 +506,7 @@ impl PageSub {
     }
 }
 
-#[derive(Hash)]
+#[derive(Hash, Debug)]
 struct DndItem {
     key_id: u64,
 }

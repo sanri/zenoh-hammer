@@ -6,7 +6,7 @@ mod payload_editor;
 mod zenoh_data;
 
 use eframe::{
-    App, AppCreator, Frame, HardwareAcceleration, NativeOptions,
+    App, AppCreator, Frame, NativeOptions,
     egui::{CentralPanel, Ui},
     run_native,
 };
@@ -28,7 +28,7 @@ impl Default for AppPayloadEditor {
 
 impl App for AppPayloadEditor {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             self.editor.show(ui);
         });
     }
@@ -38,10 +38,11 @@ fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("show_payload_editor=info"))
         .init();
 
-    let options = NativeOptions {
-        hardware_acceleration: HardwareAcceleration::Required,
-        ..NativeOptions::default()
-    };
+    // let options = NativeOptions {
+    //     hardware_acceleration: HardwareAcceleration::Required,
+    //     ..NativeOptions::default()
+    // };
+    let options = NativeOptions::default();
     let app = AppPayloadEditor::default();
     let create: AppCreator = Box::new(|_cc| Ok(Box::new(app)));
     let _ = run_native("PayloadEditor", options, create);

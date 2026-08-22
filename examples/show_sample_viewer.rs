@@ -7,10 +7,9 @@ mod sample_viewer;
 #[path = "../src/zenoh_data.rs"]
 mod zenoh_data;
 
-use eframe::egui::CentralPanel;
 use eframe::{
-    AppCreator, Frame, HardwareAcceleration, NativeOptions,
-    egui::{ComboBox, ScrollArea, Ui},
+    AppCreator, Frame, NativeOptions,
+    egui::{CentralPanel, ComboBox, ScrollArea, Ui},
 };
 use env_logger::Env;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -89,7 +88,7 @@ impl AppHexViewer {
 
 impl eframe::App for AppHexViewer {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-        CentralPanel::default().show_inside(ui, |ui| self.show(ui));
+        CentralPanel::default().show(ui, |ui| self.show(ui));
     }
 }
 
@@ -97,10 +96,11 @@ fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("show_sample_viewer=info"))
         .init();
 
-    let options = NativeOptions {
-        hardware_acceleration: HardwareAcceleration::Required,
-        ..NativeOptions::default()
-    };
+    // let options = NativeOptions {
+    //     hardware_acceleration: HardwareAcceleration::Required ,
+    //     ..NativeOptions::default()
+    // };
+    let options = NativeOptions::default();
     let app = AppHexViewer::default();
     let create: AppCreator = Box::new(|_cc| Ok(Box::new(app)));
     let _ = eframe::run_native("SampleViewer", options, create);
